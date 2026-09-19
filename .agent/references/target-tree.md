@@ -5,6 +5,7 @@ src/dip_studio/
 ├── domain/          # pure model and policies
 ├── application/     # commands, use cases, ports
 ├── infrastructure/  # filesystem, codecs, NumPy/OpenCV adapters
+├── processing/      # processor contracts and orchestration
 ├── rendering/       # document-to-pixels; separate from processing
 ├── presentation/    # PySide6 views and composition
 └── shared/          # tokens and narrow cross-cutting primitives

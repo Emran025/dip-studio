@@ -10,6 +10,8 @@ SRC = ROOT / "src" / "dip_studio"
 RULES = {
     "domain": ("PySide6", "numpy", "cv2", "pathlib.Path", "os.", "pathlib"),
     "application": ("PySide6", "numpy", "cv2"),
+    "processing": ("PySide6",),
+    "rendering": ("PySide6",),
 }
 errors: list[str] = []
 for file in SRC.rglob("*.py"):
