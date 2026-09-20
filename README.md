@@ -114,6 +114,20 @@ available from `View > Shortcut profile`: `DIP Studio Default`, `Photoshop-like`
 `DIP Laboratory`, and `Custom`. The active profile and each profile's custom
 overrides are persisted independently in `QSettings`.
 
+Editor tools and Layer actions use the local `QtAwesome` icon package
+(Font Awesome assets bundled with the installed package), not platform folder/file
+icons or remote URLs. The presentation adapter maps semantic tool IDs to the icon
+catalog and keeps an internal vector fallback for environments where QtAwesome is
+not installed. Python packages are interpreter-specific: Pylance uses the project's
+`.venv`, while a separate Anaconda interpreter may have additional packages. Install
+the optional GUI dependencies into the interpreter selected for the workspace, or
+select the Anaconda interpreter explicitly when using its QtAwesome installation.
+
+The top toolbar is intentionally icon-only and kept to one row. Undo and Redo remain
+in the `Edit` menu with `Ctrl+Z`/`Ctrl+Y` shortcuts instead of duplicating them in a
+secondary text toolbar. Menu bar and menu item colors are explicitly themed so labels
+remain readable in both light and dark modes.
+
 ```bash
 python -m dip_studio.presentation.app
 # or, after installing the package:

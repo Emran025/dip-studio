@@ -4,8 +4,15 @@ import json
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtCore import QByteArray, QEvent, QPoint, QSettings, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QImage, QKeyEvent, QKeySequence, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QEvent, QSettings, QSize, Qt
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QIcon,
+    QKeyEvent,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -15,7 +22,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QLineEdit,
-    QListWidget,
     QMainWindow,
     QMessageBox,
     QTextEdit,
@@ -29,7 +35,6 @@ from dip_studio.application.input_dispatcher import (
     InputDispatcher,
 )
 from dip_studio.application.shortcut_profiles import (
-    CUSTOM_PROFILE,
     DEFAULT_PROFILE,
     PROFILE_NAMES,
     create_profile_registry,
@@ -38,6 +43,8 @@ from dip_studio.application.shortcut_registry import (
     ShortcutBinding,
     default_shortcut_registry,
 )
+from dip_studio.application.tool_registry import ToolDefinition
+from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.presentation.dialogs import (
     CommandPaletteDialog,
     NewProjectDialog,
@@ -45,8 +52,10 @@ from dip_studio.presentation.dialogs import (
     ShortcutEditorDialog,
 )
 from dip_studio.presentation.sidebar import RightSidebar
+from dip_studio.presentation.tool_panel import ToolPanel
 from dip_studio.presentation.theme import DARK, LIGHT
-from dip_studio.presentation.theme_adapter import palette_for
+from dip_studio.presentation.theme_adapter import palette_for, stylesheet_for
+from dip_studio.presentation.vector_icons import icon_for
 from dip_studio.rendering.ports import BlankDocumentRenderer
 
 
@@ -69,160 +78,6 @@ class DocumentView(Protocol):
     is_dirty: bool
 
 
-class CanvasView(QWidget):
-    """Read-only preview surface fed by rendered bytes."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setMinimumSize(320, 240)
-        self.setObjectName("canvas")
-        self._source_image: QImage | None = None
-        self._pixmap: QPixmap | None = None
-        self._zoom = 1.0
-        self._grid_enabled = False
-        self._show_before = False
-        self._pan = QPoint()
-        self._drag_start: QPoint | None = None
-        self.__space_pan = False
-
-    def show_preview(self, data: bytes) -> None:
-        image = QImage()
-        if not image.loadFromData(data, "PPM"):
-            raise ValueError("Renderer returned an invalid preview frame")
-        self._source_image = image
-        self._render_zoomed()
-
-    def set_grid_enabled(self, enabled: bool) -> None:
-        self._grid_enabled = enabled
-        self.update()
-
-    def set_before_after(self, show_before: bool) -> None:
-        self._show_before = show_before
-        self.update()
-
-    def mousePressEvent(self, event: object) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and (
-            self._space_pan or event.button() == Qt.MouseButton.LeftButton
-        ):
-            self._drag_start = event.position().toPoint()
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: object) -> None:
-        if self._drag_start is not None:
-            current = event.position().toPoint()
-            self._pan += current - self._drag_start
-            self._drag_start = current
-            self._clamp_pan()
-            self.update()
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: object) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start = None
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
-        super().mouseReleaseEvent(event)
-
-    def keyPressEvent(self, event: object) -> None:
-        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
-            self._space_pan = True
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
-            event.accept()
-            return
-        super().keyPressEvent(event)
-
-    def keyReleaseEvent(self, event: object) -> None:
-        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
-            self._space_pan = False
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            event.accept()
-            return
-        super().keyReleaseEvent(event)
-
-    def wheelEvent(self, event: object) -> None:
-        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            if event.angleDelta().y() > 0:
-                self.zoom_in()
-            else:
-                self.zoom_out()
-            event.accept()
-            return
-        super().wheelEvent(event)
-
-    @property
-    def zoom(self) -> float:
-        return self._zoom
-
-    def zoom_in(self) -> None:
-        self.set_zoom(self._zoom * 1.25)
-
-    def zoom_out(self) -> None:
-        self.set_zoom(self._zoom / 1.25)
-
-    def actual_size(self) -> None:
-        self.set_zoom(1.0)
-
-    def fit_to_view(self) -> None:
-        if self._source_image is None:
-            return
-        width_ratio = max(0.1, (self.width() - 24) / self._source_image.width())
-        height_ratio = max(0.1, (self.height() - 24) / self._source_image.height())
-        self.set_zoom(min(width_ratio, height_ratio))
-
-    def set_zoom(self, zoom: float) -> None:
-        self._zoom = min(8.0, max(0.1, zoom))
-        self._clamp_pan()
-        self._render_zoomed()
-
-    def resizeEvent(self, event: object) -> None:
-        super().resizeEvent(event)
-        if self._source_image is not None:
-            self._render_zoomed()
-
-    def _render_zoomed(self) -> None:
-        if self._source_image is None:
-            return
-        size = self._source_image.size()
-        size.setWidth(max(1, round(size.width() * self._zoom)))
-        size.setHeight(max(1, round(size.height() * self._zoom)))
-        pixmap = QPixmap.fromImage(self._source_image).scaled(
-            size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self._pixmap = pixmap
-        self._clamp_pan()
-        self.update()
-
-    def _clamp_pan(self) -> None:
-        if self._pixmap is None:
-            self._pan = QPoint()
-            return
-        max_x = max(0, (self._pixmap.width() - self.width()) // 2)
-        max_y = max(0, (self._pixmap.height() - self.height()) // 2)
-        self._pan.setX(max(-max_x, min(max_x, self._pan.x())))
-        self._pan.setY(max(-max_y, min(max_y, self._pan.y())))
-
-    def paintEvent(self, event: object) -> None:
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), Qt.GlobalColor.darkGray)
-        if self._grid_enabled:
-            painter.setPen(Qt.GlobalColor.gray)
-            for x in range(0, self.width(), 16):
-                painter.drawLine(x, 0, x, self.height())
-            for y in range(0, self.height(), 16):
-                painter.drawLine(0, y, self.width(), y)
-        if self._pixmap is None:
-            painter.setPen(Qt.GlobalColor.white)
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Create a document to start")
-            return
-        x = (self.width() - self._pixmap.width()) // 2 + self._pan.x()
-        y = (self.height() - self._pixmap.height()) // 2 + self._pan.y()
-        if self._show_before:
-            painter.setOpacity(0.45)
-        painter.drawPixmap(x, y, self._pixmap)
-
-
 class MainWindow(QMainWindow):
     def __init__(self, controller: EditorController | None = None) -> None:
         super().__init__()
@@ -238,6 +93,7 @@ class MainWindow(QMainWindow):
         self._tokens = DARK
         self._canvas = CanvasView()
         self.setWindowTitle("DIP Studio")
+        self.setWindowIcon(icon_for("app"))
         self.resize(1200, 760)
         self.setCentralWidget(self._canvas)
         self._create_actions()
@@ -257,6 +113,7 @@ class MainWindow(QMainWindow):
 
     def _create_actions(self) -> None:
         self._new_action = QAction("New", self)
+        self._new_action.setIcon(icon_for("file.new"))
         self._new_action.setShortcut(QKeySequence(self._shortcut("file.new")))
         self._new_action.triggered.connect(self._show_new_project)
         self._open_project_action = QAction("Open project...", self)
@@ -265,9 +122,11 @@ class MainWindow(QMainWindow):
         self._save_project_action.setShortcut(QKeySequence(self._shortcut("file.save")))
         self._save_project_action.triggered.connect(self._save_project)
         self._undo_action = QAction("Undo", self)
+        self._undo_action.setIcon(icon_for("undo"))
         self._undo_action.setShortcut(QKeySequence(self._shortcut("edit.undo")))
         self._undo_action.triggered.connect(self._undo)
         self._redo_action = QAction("Redo", self)
+        self._redo_action.setIcon(icon_for("redo"))
         self._redo_action.setShortcut(QKeySequence(self._shortcut("edit.redo")))
         self._redo_action.triggered.connect(self._redo)
         self._add_layer_action = QAction("Add layer", self)
@@ -294,21 +153,26 @@ class MainWindow(QMainWindow):
         self._theme_action = QAction("Toggle theme", self)
         self._theme_action.triggered.connect(self._toggle_theme)
         self._command_action = QAction("Command palette", self)
+        self._command_action.setIcon(icon_for("command"))
         self._command_action.setShortcut(QKeySequence(self._shortcut("application.command_palette")))
         self._command_action.triggered.connect(self._show_command_palette)
         self._shortcut_editor_action = QAction("Keyboard shortcuts", self)
         self._shortcut_editor_action.triggered.connect(self._show_shortcut_editor)
         self._zoom_in_action = QAction("Zoom in", self)
+        self._zoom_in_action.setIcon(icon_for("zoom.in"))
         self._zoom_in_action.setShortcut(QKeySequence(self._shortcut("canvas.zoom_in")))
         self._zoom_in_action.triggered.connect(self._zoom_in)
         self._zoom_out_action = QAction("Zoom out", self)
+        self._zoom_out_action.setIcon(icon_for("zoom.out"))
         self._zoom_out_action.setShortcut(QKeySequence(self._shortcut("canvas.zoom_out")))
         self._zoom_out_action.triggered.connect(self._zoom_out)
         self._fit_action = QAction("Fit canvas", self)
+        self._fit_action.setIcon(icon_for("fit"))
         self._fit_action.triggered.connect(self._fit_canvas)
         self._actual_size_action = QAction("Actual size", self)
         self._actual_size_action.triggered.connect(self._actual_size)
         self._grid_action = QAction("Show grid", self)
+        self._grid_action.setIcon(icon_for("grid"))
         self._grid_action.setCheckable(True)
         self._grid_action.triggered.connect(self._toggle_grid)
         self._before_after_action = QAction("Before/after", self)
@@ -355,13 +219,16 @@ class MainWindow(QMainWindow):
             return FocusState()
         if isinstance(widget, (QLineEdit, QTextEdit, QAbstractSpinBox, QComboBox)):
             return FocusState(input_field=True)
-        if isinstance(widget, QDialog) or self.activeModalWidget() is not None:
+        if isinstance(widget, QDialog) or QApplication.activeModalWidget() is not None:
             return FocusState(modal_dialog=True)
         if self._sidebar.isAncestorOf(widget):
             return FocusState(panel_context="Layer Panel")
         return FocusState(canvas=self._canvas.isAncestorOf(widget) or widget is self._canvas)
 
     def eventFilter(self, watched: object, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Show and isinstance(watched, QWidget):
+            self._style_native_title_bar(watched)
+            return super().eventFilter(watched, event)
         if event.type() != QEvent.Type.KeyPress or not isinstance(event, QKeyEvent):
             return super().eventFilter(watched, event)
         if event.isAutoRepeat():
@@ -377,6 +244,20 @@ class MainWindow(QMainWindow):
             return super().eventFilter(watched, event)
         event.accept()
         return True
+
+    def _style_native_title_bar(self, widget: QWidget) -> None:
+        """Match Windows native title bars to the active application theme."""
+        window = widget.windowHandle()
+        if window is None:
+            return
+        title_color = QColor(self._tokens.surface)
+        text_color = QColor(self._tokens.foreground)
+        set_title_color = getattr(window, "setTitleBarColor", None)
+        set_button_color = getattr(window, "setTitleBarButtonColor", None)
+        if callable(set_title_color):
+            set_title_color(title_color)
+        if callable(set_button_color):
+            set_button_color(text_color)
 
     def _shortcut(self, command_id: str) -> str:
         return self._shortcuts.get(command_id).key
@@ -453,10 +334,12 @@ class MainWindow(QMainWindow):
     def _create_toolbar(self) -> None:
         toolbar = QToolBar("Main toolbar", self)
         toolbar.setObjectName("mainToolbar")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setIconSize(QSize(13, 13))
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         toolbar.addAction(self._new_action)
         toolbar.addAction(self._command_action)
-        toolbar.addAction(self._undo_action)
-        toolbar.addAction(self._redo_action)
         toolbar.addSeparator()
         toolbar.addAction(self._zoom_out_action)
         toolbar.addAction(self._fit_action)
@@ -467,28 +350,30 @@ class MainWindow(QMainWindow):
         self.addToolBar(toolbar)
 
     def _create_docks(self) -> None:
-        tools = QListWidget()
-        for tool in self._controller.tools:
-            tools.addItem(tool.name)
+        tools = ToolPanel(self._controller.tools)
+        tools.toolSelected.connect(self._select_tool)
+        self._tool_panel = tools
         self._tools_dock = self._dock("Tools", tools)
         self._sidebar = RightSidebar()
         self._workspace_dock = self._dock("Workspace", self._sidebar)
         self._sidebar.set_layer_callback(self._change_layer)
         self._sidebar.set_layer_structure_callback(self._change_layer_structure)
         self._sidebar.set_layer_rename_callback(self._rename_layer)
-        self._tools_dock.widget().currentTextChanged.connect(self._select_tool)
         self._sidebar.properties.previewRequested.connect(self._preview_parameters)
         self._sidebar.properties.applyRequested.connect(self._apply_parameters)
         self._sidebar.properties.cancelRequested.connect(self._cancel_parameters)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._tools_dock)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._workspace_dock)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._dock("Timeline", QLabel("Timeline")))
+        self.addDockWidget(
+            Qt.DockWidgetArea.BottomDockWidgetArea,
+            self._dock("Timeline", QLabel("Timeline")),
+        )
 
     def _dock(self, title: str, widget: QWidget) -> QDockWidget:
         dock = QDockWidget(title, self)
         dock.setObjectName(f"{title.lower()}Dock")
         dock.setWidget(widget)
-        dock.setFeatures(QDockWidget.DockWidgetFeature.AllDockWidgetFeatures)
+        dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetFeatureMask)
         return dock
 
     def _create_blank_document(self) -> None:
@@ -517,6 +402,7 @@ class MainWindow(QMainWindow):
         if tool is None:
             self._sidebar.properties.set_schema(())
             return
+        self._tool_panel.select_tool(name, emit=False)
         schema = tuple(
             ParameterDefinition(
                 parameter.label,
@@ -567,11 +453,15 @@ class MainWindow(QMainWindow):
             elif action == "remove":
                 document = self._controller.remove_layers(layer_ids)
                 label = "Removed selected layers"
-                selected_ids = tuple(layer.id for layer in document.layers if layer.id in previous_ids)
+                selected_ids = tuple(
+                    layer.id for layer in document.layers if layer.id in previous_ids
+                )
             elif action == "duplicate":
                 document = self._controller.duplicate_layer(layer_ids[0])
                 label = "Duplicated layer"
-                selected_ids = (next(layer.id for layer in document.layers if layer.id not in existing_ids),)
+                selected_ids = (
+                    next(layer.id for layer in document.layers if layer.id not in existing_ids),
+                )
             elif action == "up":
                 document = self._controller.move_layer(layer_ids[0], -1)
                 label = "Moved layer up"
@@ -632,29 +522,32 @@ class MainWindow(QMainWindow):
             self._sidebar.rename_selected_layer()
 
     def _preview_parameters(self, values: dict[str, object]) -> None:
-        tool = self._tools_dock.widget().currentItem()
+        tool = self._selected_tool()
         if tool is not None:
             try:
-                self._controller.preview_processing(tool.text().lower(), values)
+                self._controller.preview_processing(tool.id, values)
                 self.statusBar().showMessage(f"Preview parameters: {', '.join(values)}")
             except (KeyError, ValueError, RuntimeError) as error:
                 QMessageBox.critical(self, "Preview failed", str(error))
 
     def _apply_parameters(self, values: dict[str, object]) -> None:
-        tool = self._tools_dock.widget().currentItem()
+        tool = self._selected_tool()
         if tool is not None:
             try:
-                document = self._controller.apply_processing(tool.text().lower(), values)
-                self._sidebar.add_history(f"Applied parameters: {tool.text()}")
-                self._show_document(document, f"Applied {tool.text()}")
+                document = self._controller.apply_processing(tool.id, values)
+                self._sidebar.add_history(f"Applied parameters: {tool.name}")
+                self._show_document(document, f"Applied {tool.name}")
             except (KeyError, ValueError, RuntimeError) as error:
                 QMessageBox.critical(self, "Apply failed", str(error))
 
     def _cancel_parameters(self) -> None:
-        tool = self._tools_dock.widget().currentItem()
+        tool = self._selected_tool()
         if tool is not None:
-            self._sidebar.add_history(f"Cancelled parameters: {tool.text()}")
+            self._sidebar.add_history(f"Cancelled parameters: {tool.name}")
             self.statusBar().showMessage("Parameter preview cancelled")
+
+    def _selected_tool(self) -> ToolDefinition | None:
+        return self._tool_panel.selected_tool()
 
     def _undo(self) -> None:
         try:
@@ -734,7 +627,9 @@ class MainWindow(QMainWindow):
         if selected_id:
             self._sidebar.select_layer(str(selected_id))
         self._sidebar.add_history(history_label)
-        self._canvas.show_preview(self._controller.preview(document.image.width, document.image.height))
+        self._canvas.show_preview(
+            self._controller.preview(document.image.width, document.image.height)
+        )
         self.statusBar().showMessage(
             f"{document.name} — {document.image.width} × {document.image.height} — "
             f"{self._canvas.zoom:.0%}"
@@ -961,6 +856,86 @@ class MainWindow(QMainWindow):
     def _apply_theme(self) -> None:
         self.setPalette(palette_for(self._tokens))
         self.setStyleSheet(
-            f"QMainWindow {{ background: {self._tokens.surface}; }}"
-            f" QDockWidget {{ color: {self._tokens.foreground}; }}"
+            stylesheet_for(self._tokens)
+            + f"""
+            QMainWindow, QDockWidget, QToolBar {{
+                background: {self._tokens.surface};
+                color: {self._tokens.foreground};
+            }}
+            QDockWidget::title {{
+                background: {self._tokens.surface_alt};
+                color: {self._tokens.foreground};
+                padding: 7px 10px;
+                font-weight: 600;
+            }}
+            QToolBar {{
+                border: 0;
+                spacing: 6px;
+                padding: 5px 8px;
+            }}
+            QToolButton#toolButton {{
+                background: {self._tokens.surface_alt};
+                border: 1px solid {self._tokens.border};
+                border-radius: 6px;
+                color: {self._tokens.foreground};
+            }}
+            QWidget#toolGroupContainer {{
+                background: transparent;
+            }}
+            QFrame#toolGridPopup {{
+                background: {self._tokens.surface_alt};
+                border: 1px solid {self._tokens.border};
+                border-radius: 4px;
+            }}
+            QToolButton#toolGridItem {{
+                background: {self._tokens.surface};
+                color: {self._tokens.foreground};
+                border: 1px solid {self._tokens.border};
+                border-radius: 3px;
+                padding: 3px;
+            }}
+            QToolButton#toolGridItem:hover {{
+                background: {self._tokens.accent};
+                border-color: {self._tokens.accent};
+            }}
+            QToolButton#toolGroupArrow {{
+                background: {self._tokens.surface_alt};
+                color: {self._tokens.foreground_muted};
+                border: 0;
+                border-radius: 2px;
+                padding: 0;
+                font-size: 9px;
+                font-weight: 600;
+            }}
+            QToolButton#toolGroupArrow:hover {{
+                background: {self._tokens.accent};
+                color: {self._tokens.accent_foreground};
+            }}
+            QToolButton#toolButton:hover {{
+                border-color: {self._tokens.accent};
+                background: {self._tokens.surface};
+            }}
+            QToolButton#toolButton:checked {{
+                border: 2px solid {self._tokens.accent};
+                background: {self._tokens.surface_alt};
+                color: {self._tokens.foreground};
+            }}
+            QToolButton#toolButton:checked:hover {{
+                background: {self._tokens.surface};
+            }}
+            QTabWidget::pane, QListWidget, QLineEdit, QDoubleSpinBox {{
+                background: {self._tokens.surface_alt};
+                color: {self._tokens.foreground};
+                border: 1px solid {self._tokens.border};
+            }}
+            QTabBar::tab {{
+                background: {self._tokens.surface_alt};
+                color: {self._tokens.foreground};
+                padding: 7px 10px;
+            }}
+            QTabBar::tab:selected {{
+                background: {self._tokens.accent};
+                color: {self._tokens.surface};
+            }}
+            """
         )

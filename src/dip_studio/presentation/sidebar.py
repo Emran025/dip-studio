@@ -1,21 +1,22 @@
 """Photoshop-style right workspace sidebar with navigable panel tabs."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QInputDialog,
-    QTabWidget,
-    QVBoxLayout,
-    QPushButton,
-    QWidget,
     QMenu,
+    QTabWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from dip_studio.presentation.dialogs import ToolParametersPanel
+from dip_studio.presentation.vector_icons import icon_for
 
 
 class RightSidebar(QWidget):
@@ -40,7 +41,8 @@ class RightSidebar(QWidget):
         self.layers.currentRowChanged.connect(self._layer_selected)
         self.layers.itemChanged.connect(self._visibility_changed)
         self._layer_callback = None
-        self.channels = QListWidget(["RGB", "Red", "Green", "Blue", "Alpha"])
+        self.channels = QListWidget()
+        self.channels.addItems(["RGB", "Red", "Green", "Blue", "Alpha"])
         self.navigator = QLabel("Fit: 100%")
         self.navigator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.history = QListWidget()
@@ -59,15 +61,19 @@ class RightSidebar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.tabs)
         controls = QHBoxLayout()
-        for label, action in (
-            ("+", "add"),
-            ("−", "remove"),
-            ("Copy", "duplicate"),
-            ("↑", "up"),
-            ("↓", "down"),
+        for icon_name, action, tooltip in (
+            ("layer.add", "add", "Add layer"),
+            ("layer.remove", "remove", "Remove selected layers"),
+            ("layer.duplicate", "duplicate", "Duplicate selected layer"),
+            ("layer.up", "up", "Move layer up"),
+            ("layer.down", "down", "Move layer down"),
         ):
-            button = QPushButton(label)
-            button.setToolTip(action.capitalize() + " layer")
+            button = QToolButton()
+            button.setObjectName("layerActionButton")
+            button.setIcon(icon_for(icon_name))
+            button.setIconSize(QSize(12, 12))
+            button.setFixedSize(36, 30)
+            button.setToolTip(tooltip)
             button.clicked.connect(lambda _checked=False, value=action: self._structure(value))
             controls.addWidget(button)
         layout.addLayout(controls)
@@ -166,7 +172,11 @@ class RightSidebar(QWidget):
             self.layer_opacity.blockSignals(True)
             item = self.layers.item(row)
             layer = next(
-                (candidate for candidate in self.layers_data if candidate.id == item.data(Qt.ItemDataRole.UserRole)),
+                (
+                    candidate
+                    for candidate in self.layers_data
+                    if candidate.id == item.data(Qt.ItemDataRole.UserRole)
+                ),
                 None,
             )
             if layer is not None:

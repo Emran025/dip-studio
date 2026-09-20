@@ -34,7 +34,7 @@ _PROFILE_OVERRIDES: dict[str, dict[str, str]] = {
         "tool.selection": "R",
         "tool.lasso": "L",
         "tool.gradient": "G",
-        "tool.eyedropper": "P",
+        "tool.eyedropper": "I",
         "tool.text": "T",
     },
 }

@@ -43,6 +43,7 @@ class NewProjectDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("New project")
         self.setModal(True)
+        self.setMinimumSize(420, 260)
         self._name = QLineEdit("Untitled")
         self._width = QSpinBox()
         self._width.setRange(1, 100000)
@@ -91,7 +92,8 @@ class CommandPaletteDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Command palette")
         self.setModal(True)
-        self.resize(520, 360)
+        self.setMinimumSize(560, 380)
+        self.resize(560, 380)
         self._commands = commands
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search commands and tools...")
@@ -127,7 +129,8 @@ class ShortcutEditorDialog(QDialog):
     def __init__(self, registry: ShortcutRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Keyboard shortcuts")
-        self.resize(620, 420)
+        self.setMinimumSize(700, 500)
+        self.resize(700, 500)
         self._registry = registry
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search commands...")
