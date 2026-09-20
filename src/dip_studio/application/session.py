@@ -9,6 +9,10 @@ from dip_studio.domain.model import ImageDocument
 class DocumentSession:
     _document: ImageDocument | None = None
 
+    @property
+    def active_document(self) -> ImageDocument | None:
+        return self._document
+
     def open(self, document: ImageDocument) -> None:
         self._document = document
 

@@ -38,6 +38,12 @@ class Layer:
 
 
 @dataclass(frozen=True, slots=True)
+class AppliedOperation:
+    operation: str
+    parameters: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ImageDocument:
     id: DocumentId
     name: str
@@ -45,6 +51,7 @@ class ImageDocument:
     layers: tuple[Layer, ...] = ()
     revision: int = 0
     saved_revision: int = 0
+    operations: tuple[AppliedOperation, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -60,6 +67,7 @@ class ImageDocument:
         name: str | None = None,
         image: ImageSpec | None = None,
         layers: tuple[Layer, ...] | None = None,
+        operations: tuple[AppliedOperation, ...] | None = None,
     ) -> "ImageDocument":
         return ImageDocument(
             self.id,
@@ -68,6 +76,7 @@ class ImageDocument:
             self.layers if layers is None else layers,
             self.revision + 1,
             self.saved_revision,
+            self.operations if operations is None else operations,
         )
 
     def marked_saved(self) -> "ImageDocument":
@@ -78,6 +87,7 @@ class ImageDocument:
             self.layers,
             self.revision,
             self.revision,
+            self.operations,
         )
 
 

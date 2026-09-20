@@ -7,7 +7,14 @@ from typing import Any
 from uuid import UUID
 
 from dip_studio.core.errors import PersistenceError
-from dip_studio.domain.model import DocumentId, ImageDocument, ImageSpec, Layer, LayerId
+from dip_studio.domain.model import (
+    AppliedOperation,
+    DocumentId,
+    ImageDocument,
+    ImageSpec,
+    Layer,
+    LayerId,
+)
 
 
 class JsonProjectStore:
@@ -60,6 +67,10 @@ class JsonProjectStore:
                     }
                     for layer in document.layers
                 ],
+                "operations": [
+                    {"operation": operation.operation, "parameters": list(operation.parameters)}
+                    for operation in document.operations
+                ],
             },
         }
 
@@ -69,6 +80,16 @@ class JsonProjectStore:
         if not isinstance(layers, list):
             raise PersistenceError("Invalid layer payload")
         parsed_layers = tuple(self._layer_from_payload(self._as_dict(item)) for item in layers)
+        operations = raw.get("operations", [])
+        if not isinstance(operations, list):
+            raise PersistenceError("Invalid operation payload")
+        parsed_operations = tuple(
+            AppliedOperation(
+                self._as_str(item["operation"]),
+                tuple((self._as_str(pair[0]), self._as_str(pair[1])) for pair in item["parameters"]),
+            )
+            for item in (self._as_dict(value) for value in operations)
+        )
         return ImageDocument(
             DocumentId(UUID(self._as_str(raw["id"]))),
             self._as_str(raw["name"]),
@@ -83,6 +104,7 @@ class JsonProjectStore:
             parsed_layers,
             self._as_int(raw["revision"]),
             self._as_int(raw["saved_revision"]),
+            parsed_operations,
         )
 
     def _layer_from_payload(self, raw: dict[str, Any]) -> Layer:

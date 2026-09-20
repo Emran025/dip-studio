@@ -11,3 +11,8 @@ def new_document(name: str, width: int, height: int) -> ImageDocument:
         ImageSpec(width, height),
         (background,),
     )
+
+
+def document_from_import(name: str, image: ImageSpec, layer_name: str) -> ImageDocument:
+    layer = Layer(LayerId(uuid4()), layer_name or "Imported image")
+    return ImageDocument(DocumentId(uuid4()), name, image, (layer,))
