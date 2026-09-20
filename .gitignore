@@ -9,3 +9,5 @@ build/
 *.egg-info/
 .idea/
 .vscode/
+.coverage
+coverage.xml

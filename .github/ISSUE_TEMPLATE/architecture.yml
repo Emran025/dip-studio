@@ -1,0 +1,16 @@
+name: Architecture proposal
+description: Propose a boundary, dependency, or reusable component
+title: "[Architecture] "
+body:
+  - type: textarea
+    id: need
+    attributes: {label: Need, description: What problem requires this change?}
+    validations: {required: true}
+  - type: textarea
+    id: reuse
+    attributes: {label: Existing candidates, description: What components/tokens were searched?}
+    validations: {required: true}
+  - type: textarea
+    id: boundaries
+    attributes: {label: Boundary impact, description: Which layers and contracts change?}
+    validations: {required: true}

@@ -10,5 +10,7 @@ jobs:
       - run: pip install -e '.[gui,dev]'
       - run: python .agent/scripts/architecture_guard.py
       - run: ruff check .
+      - run: ruff format --check .
+      - run: python -m build
       - run: mypy src
       - run: pytest
