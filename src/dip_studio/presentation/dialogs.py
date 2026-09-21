@@ -238,8 +238,14 @@ class ToolParametersPanel(QWidget):
         self._form = QFormLayout(self)
         self._controls: dict[str, QWidget] = {}
         self._definitions: tuple[ParameterDefinition, ...] = ()
-        self._actions = QWidget()
-        actions = QHBoxLayout(self._actions)
+        self._actions: QWidget | None = None
+        self._empty = QLineEdit("Select a tool to edit parameters")
+        self._empty.setReadOnly(True)
+        self._form.addRow(self._empty)
+
+    def _create_actions(self) -> QWidget:
+        actions_widget = QWidget()
+        actions = QHBoxLayout(actions_widget)
         actions.setContentsMargins(0, 8, 0, 0)
         preview = QPushButton("Preview")
         apply = QPushButton("Apply")
@@ -250,9 +256,7 @@ class ToolParametersPanel(QWidget):
         actions.addWidget(preview)
         actions.addWidget(apply)
         actions.addWidget(cancel)
-        self._empty = QLineEdit("Select a tool to edit parameters")
-        self._empty.setReadOnly(True)
-        self._form.addRow(self._empty)
+        return actions_widget
 
     def set_schema(self, schema: tuple[ParameterDefinition, ...]) -> None:
         while self._form.rowCount():
@@ -288,6 +292,7 @@ class ToolParametersPanel(QWidget):
                 control = widget
             self._controls[str(index)] = control
             self._form.addRow(definition.label, control)
+        self._actions = self._create_actions()
         self._form.addRow(self._actions)
 
     def values(self) -> dict[str, object]:
@@ -306,3 +311,242 @@ class ToolParametersPanel(QWidget):
                 raise TypeError(f"Unsupported parameter control: {type(control).__name__}")
             values[definition.label] = value
         return values
+
+    def set_values(self, values: dict[str, object]) -> None:
+        """Update control values programmatically by label or index."""
+        label_to_index = {d.label.lower(): str(i) for i, d in enumerate(self._definitions)}
+        for k, v in values.items():
+            idx = label_to_index.get(str(k).lower())
+            if idx and idx in self._controls:
+                ctrl = self._controls[idx]
+                if isinstance(ctrl, QSpinBox):
+                    try:
+                        ctrl.setValue(int(float(v)))
+                    except (ValueError, TypeError):
+                        pass
+                elif isinstance(ctrl, QDoubleSpinBox):
+                    try:
+                        ctrl.setValue(float(v))
+                    except (ValueError, TypeError):
+                        pass
+                elif isinstance(ctrl, QComboBox):
+                    ctrl.setCurrentText(str(v))
+                elif isinstance(ctrl, QCheckBox):
+                    ctrl.setChecked(bool(v))
+                elif isinstance(ctrl, QLineEdit):
+                    ctrl.setText(str(v))
+
+
+# ──────────────────────────── Analysis Dialogs ───────────────────────────────
+
+class HistogramDialog(QDialog):
+    """Display per-channel pixel intensity histogram using a simple Qt bar widget."""
+
+    def __init__(
+        self,
+        histogram_data: "dict[str, list[int]]",
+        parent: QWidget | None = None,
+    ) -> None:
+        """
+        Args:
+            histogram_data: mapping of channel name → list of 256 counts.
+                Expected keys: 'R', 'G', 'B' for colour images or 'L' for grey.
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Histogram")
+        self.setModal(False)
+        self.setMinimumSize(520, 360)
+        self.resize(640, 400)
+
+        self._data = histogram_data
+        self._channel_selector = QComboBox()
+        self._channel_selector.addItems(list(histogram_data.keys()))
+        self._channel_selector.currentTextChanged.connect(self._refresh)
+
+        from PySide6.QtWidgets import QLabel, QScrollArea
+
+        self._chart_label = QLabel()
+        self._chart_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
+        self._chart_label.setMinimumSize(480, 256)
+
+        scroll = QScrollArea()
+        scroll.setWidget(self._chart_label)
+        scroll.setWidgetResizable(True)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self._channel_selector)
+        layout.addWidget(scroll)
+        layout.addWidget(buttons)
+
+        self._refresh(self._channel_selector.currentText())
+
+    def _refresh(self, channel: str) -> None:
+        counts = self._data.get(channel, [])
+        if not counts:
+            self._chart_label.setText("No data")
+            return
+        max_count = max(counts) or 1
+        bar_height = 200
+        lines: list[str] = []
+        # ASCII bar chart: one character column per 8 intensity bins
+        for bucket in range(0, 256, 8):
+            bucket_val = max(counts[bucket:bucket + 8]) if bucket + 8 <= len(counts) else 0
+            bars = int(bucket_val / max_count * bar_height)
+            lines.append(f"{bucket:3d} │{'█' * bars}")
+        lines.append("    └" + "─" * 25 + " intensity →")
+        self._chart_label.setText("\n".join(lines))
+        self._chart_label.setFont(
+            self._chart_label.font().__class__("Courier New", 8)
+        )
+
+    @staticmethod
+    def from_buffer(
+        arr: "object",  # np.ndarray
+        parent: QWidget | None = None,
+    ) -> "HistogramDialog":
+        """Create a HistogramDialog from a NumPy array (H, W, C) or (H, W)."""
+        import numpy as np  # type: ignore[import-untyped]
+
+        a: np.ndarray = arr  # type: ignore[assignment]
+        data: dict[str, list[int]] = {}
+        if a.ndim == 2:
+            hist, _ = np.histogram(a.flatten(), bins=256, range=(0, 256))
+            data["L"] = hist.tolist()
+        elif a.ndim == 3:
+            for i, name in enumerate(("R", "G", "B", "A")[: a.shape[2]]):
+                hist, _ = np.histogram(a[:, :, i].flatten(), bins=256, range=(0, 256))
+                data[name] = hist.tolist()
+        return HistogramDialog(data, parent)
+
+
+class ImageStatsDialog(QDialog):
+    """Display per-channel image statistics (min, max, mean, std, median)."""
+
+    def __init__(
+        self,
+        stats: "dict[str, dict[str, float]]",
+        image_info: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
+        """
+        Args:
+            stats: {channel → {stat_name → value}}
+            image_info: optional header string (e.g. "800×600 RGB 8-bit")
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Image Statistics")
+        self.setModal(False)
+        self.setMinimumSize(400, 300)
+
+        from PySide6.QtWidgets import QHeaderView, QLabel, QTableWidget, QTableWidgetItem
+
+        layout = QVBoxLayout(self)
+        if image_info:
+            header = QLabel(f"<b>{image_info}</b>")
+            layout.addWidget(header)
+
+        channels = list(stats.keys())
+        stat_names = ["min", "max", "mean", "std", "median"]
+        table = QTableWidget(len(stat_names), len(channels))
+        table.setHorizontalHeaderLabels(channels)
+        table.setVerticalHeaderLabels(stat_names)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        for col, ch in enumerate(channels):
+            ch_stats = stats[ch]
+            for row, sname in enumerate(stat_names):
+                val = ch_stats.get(sname, float("nan"))
+                item = QTableWidgetItem(f"{val:.2f}")
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                table.setItem(row, col, item)
+
+        layout.addWidget(table)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    @staticmethod
+    def from_buffer(
+        arr: "object",
+        image_info: str = "",
+        parent: QWidget | None = None,
+    ) -> "ImageStatsDialog":
+        """Build an ImageStatsDialog by computing stats from a NumPy array."""
+        import numpy as np  # type: ignore[import-untyped]
+
+        a: np.ndarray = arr  # type: ignore[assignment]
+        stat_names = ["min", "max", "mean", "std", "median"]
+        stats: dict[str, dict[str, float]] = {}
+
+        if a.ndim == 2:
+            ch_data = a.astype(np.float64)
+            stats["L"] = {
+                "min": float(ch_data.min()),
+                "max": float(ch_data.max()),
+                "mean": float(ch_data.mean()),
+                "std": float(ch_data.std()),
+                "median": float(np.median(ch_data)),
+            }
+        elif a.ndim == 3:
+            for i, name in enumerate(("R", "G", "B", "A")[: a.shape[2]]):
+                ch_data = a[:, :, i].astype(np.float64)
+                stats[name] = {
+                    "min": float(ch_data.min()),
+                    "max": float(ch_data.max()),
+                    "mean": float(ch_data.mean()),
+                    "std": float(ch_data.std()),
+                    "median": float(np.median(ch_data)),
+                }
+
+        return ImageStatsDialog(stats, image_info, parent)
+
+
+class ExportDialog(QDialog):
+    """Dialog for choosing export format and quality before saving."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Export Image")
+        self.setModal(True)
+        self.setMinimumSize(380, 200)
+
+        self._format = QComboBox()
+        self._format.addItems(["PNG", "JPEG", "BMP", "TIFF", "PPM"])
+        self._format.currentTextChanged.connect(self._on_format_change)
+
+        self._quality_label_widget = __import__(
+            "PySide6.QtWidgets", fromlist=["QLabel"]
+        ).QLabel("Quality (JPEG):")
+        self._quality = QSpinBox()
+        self._quality.setRange(1, 100)
+        self._quality.setValue(85)
+
+        form = QFormLayout()
+        form.addRow("Format", self._format)
+        form.addRow(self._quality_label_widget, self._quality)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+        self._on_format_change("PNG")
+
+    def _on_format_change(self, fmt: str) -> None:
+        visible = fmt == "JPEG"
+        self._quality_label_widget.setVisible(visible)
+        self._quality.setVisible(visible)
+
+    def selected_format(self) -> str:
+        return self._format.currentText().lower()
+
+    def selected_quality(self) -> int:
+        return self._quality.value()

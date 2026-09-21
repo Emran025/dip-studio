@@ -46,6 +46,7 @@ class ToolPanel(QWidget):
         self._tool_buttons: dict[str, QToolButton] = {}
         self._tool_group = QButtonGroup(self)
         self._tool_group.setExclusive(True)
+        self._selected_tool_id: str | None = None
         layout = QGridLayout(self)
         layout.setContentsMargins(6, 8, 6, 8)
         layout.setHorizontalSpacing(0)
@@ -62,6 +63,7 @@ class ToolPanel(QWidget):
                 continue
             container, button = self._make_group_button(group_name, group_tools)
             for tool in group_tools:
+                self._tool_buttons[tool.id] = button
                 self._tool_buttons[tool.name] = button
             self._tool_group.addButton(button)
             layout.addWidget(container, row, 0, Qt.AlignmentFlag.AlignHCenter)
@@ -69,23 +71,28 @@ class ToolPanel(QWidget):
         layout.setRowStretch(row, 1)
 
         if tools:
-            self.select_tool(tools[0].name, emit=False)
+            self.select_tool(tools[0].id, emit=False)
 
-    def select_tool(self, name: str, *, emit: bool = True) -> None:
-        tool = self._tools_by_name.get(name)
-        button = self._tool_buttons.get(name)
+    def select_tool(self, id_or_name: str, *, emit: bool = True) -> None:
+        tool = self._tools_by_id.get(id_or_name) or self._tools_by_name.get(id_or_name)
+        button = self._tool_buttons.get(id_or_name)
         if tool is None or button is None:
             return
+        self._selected_tool_id = tool.id
         button.setChecked(True)
         button.setIcon(icon_for(tool.id))
         button.setToolTip(f"{tool.name}\n{tool.description}")
         if emit:
-            self.toolSelected.emit(name)
+            self.toolSelected.emit(tool.id)
 
     def selected_tool(self) -> ToolDefinition | None:
-        for name, button in self._tool_buttons.items():
+        if self._selected_tool_id is not None:
+            return self._tools_by_id.get(self._selected_tool_id)
+        for button in set(self._tool_buttons.values()):
             if button.isChecked():
-                return self._tools_by_name[name]
+                for tool in self._tools_by_id.values():
+                    if self._tool_buttons.get(tool.id) is button:
+                        return tool
         return None
 
     def _make_group_button(
@@ -98,7 +105,10 @@ class ToolPanel(QWidget):
         button.setIcon(icon_for(tools[0].id))
         button.setIconSize(QSize(17, 17))
         button.setFixedSize(44, 44)
-        button.clicked.connect(lambda _checked=False, name=tools[0].name: self.toolSelected.emit(name))
+        first_tool_id = tools[0].id
+        button.clicked.connect(
+            lambda _checked=False, tid=first_tool_id: self.toolSelected.emit(tid)
+        )
         if len(tools) == 1:
             return button, button
 
@@ -118,10 +128,11 @@ class ToolPanel(QWidget):
             tool_button.setIconSize(QSize(20, 20))
             tool_button.setFixedSize(34, 34)
             tool_button.setToolTip(f"{tool.name}{shortcut}\n{tool.description}")
+            tool_id = tool.id
             tool_button.clicked.connect(
-                lambda _checked=False, name=tool.name, panel=popup: (
+                lambda _checked=False, tid=tool_id, panel=popup: (
                     panel.hide(),
-                    self.toolSelected.emit(name),
+                    self.toolSelected.emit(tid),
                 )
             )
             index = tools.index(tool)

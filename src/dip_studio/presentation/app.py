@@ -2,7 +2,6 @@
 
 import sys
 
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
 from dip_studio.composition import create_main_window
@@ -17,7 +16,6 @@ def run() -> int:
     application.setOrganizationName("DIP Studio")
     application.setWindowIcon(icon_for("app"))
     application.setPalette(palette_for(DARK))
-    QSettings("DIP Studio", "DIP Studio").clear()  # Reset cached workspace/debug state.
     application.setStyleSheet(stylesheet_for(DARK))
     window = create_main_window()
     window.show()

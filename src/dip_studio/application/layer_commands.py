@@ -1,4 +1,5 @@
 """Undoable layer state transitions."""
+from __future__ import annotations
 
 from uuid import uuid4
 
@@ -8,16 +9,24 @@ from dip_studio.domain.model import ImageDocument, Layer, LayerId
 
 
 class ChangeLayer(Command):
+    label = "Change Layer"
+
     def __init__(
         self,
         layer_id: LayerId,
         *,
         visible: bool | None = None,
         opacity: float | None = None,
+        blend_mode: str | None = None,
+        locked: bool | None = None,
+        buffer_id: str | None = None,
     ) -> None:
         self._layer_id = layer_id
         self._visible = visible
         self._opacity = opacity
+        self._blend_mode = blend_mode
+        self._locked = locked
+        self._buffer_id = buffer_id
         self._previous: ImageDocument | None = None
 
     def execute(self, session: DocumentSession) -> None:
@@ -29,11 +38,12 @@ class ChangeLayer(Command):
         if index is None:
             raise KeyError("Layer does not exist")
         layer = document.layers[index]
-        updated = Layer(
-            layer.id,
-            layer.name,
-            layer.visible if self._visible is None else self._visible,
-            layer.opacity if self._opacity is None else self._opacity,
+        updated = layer.changed(
+            visible=self._visible,
+            opacity=self._opacity,
+            blend_mode=self._blend_mode,
+            locked=self._locked,
+            buffer_id=self._buffer_id if self._buffer_id is not None else layer.buffer_id,
         )
         layers = document.layers[:index] + (updated,) + document.layers[index + 1 :]
         self._previous = document
@@ -46,6 +56,8 @@ class ChangeLayer(Command):
 
 
 class ChangeLayers(Command):
+    label = "Change Layers"
+
     def __init__(
         self,
         layer_ids: tuple[LayerId, ...],
@@ -66,12 +78,7 @@ class ChangeLayers(Command):
         if self._visible is None and self._opacity is None:
             raise ValueError("Layer change has no state")
         updated = tuple(
-            Layer(
-                layer.id,
-                layer.name,
-                layer.visible if self._visible is None else self._visible,
-                layer.opacity if self._opacity is None else self._opacity,
-            )
+            layer.changed(visible=self._visible, opacity=self._opacity)
             if layer.id in selected
             else layer
             for layer in document.layers
@@ -86,6 +93,8 @@ class ChangeLayers(Command):
 
 
 class RenameLayer(Command):
+    label = "Rename Layer"
+
     def __init__(self, layer_id: LayerId, name: str) -> None:
         self._layer_id = layer_id
         self._name = name
@@ -97,9 +106,13 @@ class RenameLayer(Command):
         if index is None:
             raise KeyError("Layer does not exist")
         layer = document.layers[index]
-        updated = Layer(layer.id, self._name, layer.visible, layer.opacity)
+        updated = layer.changed(name=self._name)
         self._previous = document
-        session.replace(document.changed(layers=document.layers[:index] + (updated,) + document.layers[index + 1:]))
+        session.replace(
+            document.changed(
+                layers=document.layers[:index] + (updated,) + document.layers[index + 1 :]
+            )
+        )
 
     def undo(self, session: DocumentSession) -> None:
         if self._previous is None:
@@ -108,7 +121,15 @@ class RenameLayer(Command):
 
 
 class AddLayer(Command):
-    def __init__(self, name: str, *, source: Layer | None = None, index: int | None = None) -> None:
+    label = "Add Layer"
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        source: Layer | None = None,
+        index: int | None = None,
+    ) -> None:
         self._layer = source or Layer(LayerId(uuid4()), name)
         self._index = index
         self._previous: ImageDocument | None = None
@@ -133,6 +154,8 @@ class AddLayer(Command):
 
 
 class PasteLayers(Command):
+    label = "Paste Layers"
+
     def __init__(self, layers: tuple[Layer, ...], index: int | None = None) -> None:
         if not layers:
             raise ValueError("At least one layer is required")
@@ -156,6 +179,8 @@ class PasteLayers(Command):
 
 
 class RemoveLayer(Command):
+    label = "Remove Layer"
+
     def __init__(self, layer_id: LayerId) -> None:
         self._layer_id = layer_id
         self._previous: ImageDocument | None = None
@@ -168,7 +193,7 @@ class RemoveLayer(Command):
         if len(document.layers) == 1:
             raise ValueError("The document must contain at least one layer")
         self._previous = document
-        layers = document.layers[:index] + document.layers[index + 1:]
+        layers = document.layers[:index] + document.layers[index + 1 :]
         session.replace(document.changed(layers=layers))
 
     def undo(self, session: DocumentSession) -> None:
@@ -178,6 +203,8 @@ class RemoveLayer(Command):
 
 
 class RemoveLayers(Command):
+    label = "Remove Layers"
+
     def __init__(self, layer_ids: tuple[LayerId, ...]) -> None:
         self._layer_ids = layer_ids
         self._previous: ImageDocument | None = None
@@ -199,6 +226,8 @@ class RemoveLayers(Command):
 
 
 class MoveLayer(Command):
+    label = "Move Layer"
+
     def __init__(self, layer_id: LayerId, delta: int) -> None:
         self._layer_id = layer_id
         self._delta = delta
@@ -224,5 +253,140 @@ class MoveLayer(Command):
 
 
 class DuplicateLayer(AddLayer):
-    def __init__(self, source: Layer, index: int) -> None:
-        super().__init__(f"{source.name} copy", source=Layer(LayerId(uuid4()), f"{source.name} copy"), index=index)
+    label = "Duplicate Layer"
+
+    def __init__(self, source: Layer, index: int, buffer_id: str | None = None) -> None:
+        copied = Layer(
+            id=LayerId(uuid4()),
+            name=f"{source.name} copy",
+            visible=source.visible,
+            opacity=source.opacity,
+            buffer_id=buffer_id if buffer_id is not None else source.buffer_id,
+            mask_id=source.mask_id,
+            blend_mode=source.blend_mode,
+            transform=source.transform,
+            locked=source.locked,
+        )
+        super().__init__(copied.name, source=copied, index=index)
+
+
+class SetLayerBlendMode(Command):
+    label = "Change Blend Mode"
+
+    def __init__(self, layer_id: LayerId, blend_mode: str) -> None:
+        self._layer_id = layer_id
+        self._blend_mode = blend_mode
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        index = next((i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None)
+        if index is None:
+            raise KeyError("Layer does not exist")
+        layer = document.layers[index]
+        updated = layer.changed(blend_mode=self._blend_mode)
+        self._previous = document
+        session.replace(
+            document.changed(
+                layers=document.layers[:index] + (updated,) + document.layers[index + 1 :]
+            )
+        )
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Command has not executed")
+        session.replace(self._previous)
+
+
+class SetLayerLocked(Command):
+    label = "Lock Layer"
+
+    def __init__(self, layer_id: LayerId, locked: bool) -> None:
+        self._layer_id = layer_id
+        self._locked = locked
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        index = next((i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None)
+        if index is None:
+            raise KeyError("Layer does not exist")
+        layer = document.layers[index]
+        updated = layer.changed(locked=self._locked)
+        self._previous = document
+        session.replace(
+            document.changed(
+                layers=document.layers[:index] + (updated,) + document.layers[index + 1 :]
+            )
+        )
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Command has not executed")
+        session.replace(self._previous)
+
+
+class MergeDown(Command):
+    label = "Merge Down"
+
+    def __init__(
+        self,
+        upper_layer_id: LayerId,
+        lower_layer_id: LayerId,
+        merged_buffer_id: str | None,
+    ) -> None:
+        self._upper_id = upper_layer_id
+        self._lower_id = lower_layer_id
+        self._merged_buffer_id = merged_buffer_id
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        idx_upper = next((i for i, l in enumerate(document.layers) if l.id == self._upper_id), None)
+        idx_lower = next((i for i, l in enumerate(document.layers) if l.id == self._lower_id), None)
+        if idx_upper is None or idx_lower is None:
+            raise KeyError("Layers do not exist")
+        lower_layer = document.layers[idx_lower]
+        merged_layer = lower_layer.changed(buffer_id=self._merged_buffer_id)
+        layers = tuple(
+            merged_layer if l.id == self._lower_id else l
+            for l in document.layers
+            if l.id != self._upper_id
+        )
+        self._previous = document
+        session.replace(document.changed(layers=layers))
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Command has not executed")
+        session.replace(self._previous)
+
+
+class CropDocument(Command):
+    label = "Crop Document"
+
+    def __init__(
+        self,
+        new_width: int,
+        new_height: int,
+        layer_buffer_map: dict[LayerId, str],
+    ) -> None:
+        self._new_width = new_width
+        self._new_height = new_height
+        self._layer_buffer_map = layer_buffer_map
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        new_spec = document.image.changed(width=self._new_width, height=self._new_height)
+        new_layers = tuple(
+            layer.changed(buffer_id=self._layer_buffer_map.get(layer.id, layer.buffer_id))
+            for layer in document.layers
+        )
+        self._previous = document
+        session.replace(document.changed(image=new_spec, layers=new_layers))
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Command has not executed")
+        session.replace(self._previous)

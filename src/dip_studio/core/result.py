@@ -1,10 +1,13 @@
 """Small typed result primitive shared by application boundaries."""
 
 from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+ValueT = TypeVar("ValueT")
 
 
 @dataclass(frozen=True, slots=True)
-class Result[ValueT]:
+class Result(Generic[ValueT]):
     value: ValueT | None = None
     error: Exception | None = None
 

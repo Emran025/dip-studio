@@ -23,7 +23,7 @@ def test_ppm_import_creates_new_document(tmp_path: Path) -> None:
 
 def test_registry_rejects_unknown_format(tmp_path: Path) -> None:
     with pytest.raises(PersistenceError, match="No image importer"):
-        ImageFormatRegistry().importer_for(tmp_path / "photo.png")
+        ImageFormatRegistry().importer_for(tmp_path / "photo.xyz")
 
 
 def test_ppm_import_rejects_invalid_data(tmp_path: Path) -> None:

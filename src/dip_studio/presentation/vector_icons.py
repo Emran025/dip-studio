@@ -14,6 +14,8 @@ from PySide6.QtGui import (
     QPolygonF,
 )
 
+from dip_studio.presentation.theme import DARK
+
 _ICON_SIZE = 64
 _STROKE = 3.0
 
@@ -51,6 +53,11 @@ _QTAWESOME_NAMES = {
     "layer.duplicate": "fa5s.clone",
     "layer.up": "fa5s.arrow-up",
     "layer.down": "fa5s.arrow-down",
+    "layer.lock": "mdi6.lock-outline",
+    "layer.unlock": "mdi6.lock-open-outline",
+    "layer.merge": "mdi6.call-merge",
+    "layer.visible": "mdi6.eye-outline",
+    "layer.hidden": "mdi6.eye-off-outline",
     "file.new": "fa5s.file",
     "app": "mdi6.image-edit-outline",
     "command": "fa5s.terminal",
@@ -117,6 +124,11 @@ def _vector_icon_for(name: str, color: str) -> QIcon:
         "layer.duplicate": _duplicate,
         "layer.up": _up,
         "layer.down": _down,
+        "layer.lock": _lock,
+        "layer.unlock": _unlock,
+        "layer.merge": _merge,
+        "layer.visible": _eye,
+        "layer.hidden": _eye_off,
         "file.new": _file,
         "app": _shape,
         "command": _command,
@@ -397,3 +409,75 @@ def _grid(p: QPainter, c: QColor) -> None:
         p.drawLine(x, 14, x, 50)
     for y in (14, 32, 50):
         p.drawLine(17, y, 47, y)
+
+
+def _lock(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3.5))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    # Shackle
+    path = QPainterPath(QPointF(22, 28))
+    path.lineTo(22, 20)
+    path.cubicTo(22, 10, 42, 10, 42, 20)
+    path.lineTo(42, 28)
+    p.drawPath(path)
+    # Body
+    p.setBrush(c)
+    p.drawRoundedRect(QRectF(16, 27, 32, 25), 4, 4)
+    # Keyhole
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(DARK.field))
+    p.drawEllipse(QPointF(32, 36), 3, 3)
+    p.drawRect(QRectF(30.5, 36, 3, 7))
+
+
+def _unlock(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3.5))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    # Open shackle
+    path = QPainterPath(QPointF(22, 28))
+    path.lineTo(22, 16)
+    path.cubicTo(22, 6, 42, 6, 42, 16)
+    path.lineTo(42, 20)
+    p.drawPath(path)
+    # Body
+    p.setBrush(c)
+    p.drawRoundedRect(QRectF(16, 27, 32, 25), 4, 4)
+    # Keyhole
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(DARK.field))
+    p.drawEllipse(QPointF(32, 36), 3, 3)
+    p.drawRect(QRectF(30.5, 36, 3, 7))
+
+
+def _merge(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    # Upper layer
+    p.drawRoundedRect(QRectF(14, 11, 36, 14), 3, 3)
+    # Lower layer
+    p.drawRoundedRect(QRectF(14, 39, 36, 14), 3, 3)
+    # Arrow down in center
+    p.setPen(_pen(c, 3.5))
+    p.drawLine(32, 27, 32, 35)
+    p.drawLine(27, 30, 32, 35)
+    p.drawLine(37, 30, 32, 35)
+
+
+def _eye(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3.5))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    # Eye contour
+    path = QPainterPath(QPointF(12, 32))
+    path.cubicTo(20, 18, 44, 18, 52, 32)
+    path.cubicTo(44, 46, 20, 46, 12, 32)
+    p.drawPath(path)
+    # Pupil
+    p.setBrush(c)
+    p.drawEllipse(QPointF(32, 32), 6, 6)
+
+
+def _eye_off(p: QPainter, c: QColor) -> None:
+    _eye(p, c)
+    p.setPen(_pen(c, 3.5))
+    p.drawLine(14, 46, 50, 18)
+

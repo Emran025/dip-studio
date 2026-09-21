@@ -4,7 +4,6 @@ from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QToolButton,
@@ -17,11 +16,18 @@ class DockPanel(QWidget):
     """Panel content with a small draggable grip and no visible title."""
 
     def __init__(
-        self, dock: QWidget, content: QWidget, main_window: QWidget
+        self,
+        dock: QWidget,
+        content: QWidget,
+        main_window: QWidget,
+        panel_group: object | None = None,
+        panel_name: str | None = None,
     ) -> None:
         super().__init__()
         self._dock = dock
         self._main_window = main_window
+        self._panel_group = panel_group
+        self._panel_name = panel_name
         self._drag_start: QPoint | None = None
         self._drag_offset = QPoint()
         self._dragging = False
@@ -83,10 +89,8 @@ class DockPanel(QWidget):
         self._drop_indicator.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents
         )
-        opacity = QGraphicsOpacityEffect(self._drop_indicator)
-        opacity.setOpacity(0.18)
-        self._drop_indicator.setGraphicsEffect(opacity)
         self._drop_indicator.hide()
+        self._drop_preview_visible = False
         self._update_floating_controls(dock.isFloating())
 
     def _update_floating_controls(self, floating: bool) -> None:
@@ -135,6 +139,9 @@ class DockPanel(QWidget):
         window_position = self._main_window.mapFromGlobal(position)
         if not self._main_window.rect().contains(window_position):
             return
+        merge = getattr(self._main_window, "_merge_dock_at_position", None)
+        if merge is not None and merge(self._dock, position):
+            return
         margins = 180
         if window_position.x() <= 260:
             area = Qt.DockWidgetArea.LeftDockWidgetArea
@@ -151,19 +158,24 @@ class DockPanel(QWidget):
     def _update_drop_preview(self, position: QPoint) -> None:
         window_position = self._main_window.mapFromGlobal(position)
         if not self._main_window.rect().contains(window_position):
-            self._drop_indicator.hide()
+            self._set_drop_preview_visible(False)
             return
         width = self._main_window.width()
         height = self._main_window.height()
         if window_position.x() <= 260:
-            geometry = (0, 0, max(8, width // 4), height)
+            geometry = (0, 0, 8, height)
         elif window_position.x() >= width - 300:
-            geometry = (width - max(8, width // 4), 0, max(8, width // 4), height)
+            geometry = (width - 8, 0, 8, height)
         elif window_position.y() >= height - 180:
-            geometry = (0, height - max(8, height // 4), width, max(8, height // 4))
+            geometry = (0, height - 8, width, 8)
         else:
-            self._drop_indicator.hide()
+            self._set_drop_preview_visible(False)
             return
         self._drop_indicator.setGeometry(*geometry)
-        self._drop_indicator.show()
-        self._drop_indicator.raise_()
+        self._set_drop_preview_visible(True)
+
+    def _set_drop_preview_visible(self, visible: bool) -> None:
+        if visible == self._drop_preview_visible:
+            return
+        self._drop_preview_visible = visible
+        self._drop_indicator.setVisible(visible)
