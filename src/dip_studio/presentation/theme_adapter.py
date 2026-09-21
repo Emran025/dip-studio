@@ -125,4 +125,36 @@ def stylesheet_for(tokens: ThemeTokens) -> str:
             background: {tokens.accent};
             color: {tokens.accent_foreground};
         }}
+        QWidget#documentBar {{
+            background: {tokens.surface};
+        }}
+        QTabBar#documentTabs {{
+            background: {tokens.surface};
+        }}
+        QTabBar#documentTabs::tab {{
+            background: {tokens.surface_alt};
+            color: {tokens.foreground_muted};
+            border: 1px solid {tokens.border};
+            border-bottom: 0;
+            border-radius: 4px 4px 0 0;
+            padding: 6px 18px;
+            margin-right: 3px;
+        }}
+        QTabBar#documentTabs::tab:selected {{
+            background: {tokens.field};
+            color: {tokens.foreground};
+            border-top: 2px solid {tokens.accent};
+        }}
+        QToolButton#newDocumentButton {{
+            background: {tokens.surface_alt};
+            color: {tokens.foreground};
+            border: 1px solid {tokens.border};
+            border-radius: 4px;
+            font-size: 18px;
+        }}
+        QToolButton#newDocumentButton:hover {{
+            background: {tokens.accent};
+            color: {tokens.accent_foreground};
+            border-color: {tokens.accent};
+        }}
     """

@@ -4,12 +4,11 @@ import json
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtCore import QByteArray, QEvent, QSettings, QSize, Qt
+from PySide6.QtCore import QByteArray, QEvent, QSettings, Qt
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
     QColor,
-    QIcon,
     QKeyEvent,
     QKeySequence,
 )
@@ -51,10 +50,12 @@ from dip_studio.presentation.dialogs import (
     ParameterDefinition,
     ShortcutEditorDialog,
 )
+from dip_studio.presentation.dock_title_bar import DockPanel
+from dip_studio.presentation.document_bar import DocumentBar
 from dip_studio.presentation.sidebar import RightSidebar
-from dip_studio.presentation.tool_panel import ToolPanel
 from dip_studio.presentation.theme import DARK, LIGHT
 from dip_studio.presentation.theme_adapter import palette_for, stylesheet_for
+from dip_studio.presentation.tool_panel import ToolPanel
 from dip_studio.presentation.vector_icons import icon_for
 from dip_studio.rendering.ports import BlankDocumentRenderer
 
@@ -89,7 +90,7 @@ class MainWindow(QMainWindow):
         self._shortcut_load_rejections: tuple[str, ...] = ()
         self._load_shortcut_profile()
         self._load_shortcut_overrides()
-        self._project_path: Path | None = None
+        self._project_paths: dict[str, Path] = {}
         self._tokens = DARK
         self._canvas = CanvasView()
         self.setWindowTitle("DIP Studio")
@@ -150,6 +151,12 @@ class MainWindow(QMainWindow):
         self._rename_layer_action = QAction("Rename selected layer", self)
         self._rename_layer_action.setShortcut(QKeySequence(self._shortcut("layer.rename")))
         self._rename_layer_action.triggered.connect(self._rename_selected_layer)
+        self._copy_layers_action = QAction("Copy selected layers", self)
+        self._copy_layers_action.setShortcut(QKeySequence("Ctrl+C"))
+        self._copy_layers_action.triggered.connect(self._copy_selected_layers)
+        self._paste_layers_action = QAction("Paste layers", self)
+        self._paste_layers_action.setShortcut(QKeySequence("Ctrl+V"))
+        self._paste_layers_action.triggered.connect(self._paste_layers)
         self._theme_action = QAction("Toggle theme", self)
         self._theme_action.triggered.connect(self._toggle_theme)
         self._command_action = QAction("Command palette", self)
@@ -185,7 +192,6 @@ class MainWindow(QMainWindow):
         self._tool_actions: tuple[QAction, ...] = tuple(
             self._make_tool_action(tool.id, tool.name, tool.shortcut)
             for tool in self._controller.tools
-            if tool.shortcut
         )
 
     def _register_input_handlers(self) -> None:
@@ -317,6 +323,9 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self._move_layer_down_action)
         edit_menu.addAction(self._toggle_layer_visibility_action)
         edit_menu.addAction(self._rename_layer_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self._copy_layers_action)
+        edit_menu.addAction(self._paste_layers_action)
         window_menu = self.menuBar().addMenu("Window")
         window_menu.addAction(self._workspace_action)
         window_menu.addSeparator()
@@ -328,6 +337,14 @@ class MainWindow(QMainWindow):
         window_menu.addSeparator()
         window_menu.addAction("Save workspace", self._save_workspace)
         window_menu.addAction("Reset workspace", self._reset_workspace)
+        tools_menu = self.menuBar().addMenu("Tools")
+        tool_menus = {}
+        for tool, action in zip(self._controller.tools, self._tool_actions, strict=True):
+            category_menu = tool_menus.get(tool.category)
+            if category_menu is None:
+                category_menu = tools_menu.addMenu(tool.category)
+                tool_menus[tool.category] = category_menu
+            category_menu.addAction(action)
         for name in ("Image", "Layer", "Select", "Filter", "Analysis", "Help"):
             self.menuBar().addMenu(name)
 
@@ -336,15 +353,12 @@ class MainWindow(QMainWindow):
         toolbar.setObjectName("mainToolbar")
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
-        toolbar.setIconSize(QSize(13, 13))
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        toolbar.addAction(self._new_action)
-        toolbar.addAction(self._command_action)
-        toolbar.addSeparator()
-        toolbar.addAction(self._zoom_out_action)
-        toolbar.addAction(self._fit_action)
-        toolbar.addAction(self._zoom_in_action)
-        toolbar.addAction(self._grid_action)
+        document_bar = DocumentBar(self)
+        document_bar.newRequested.connect(self._show_new_project)
+        document_bar.documentSelected.connect(self._switch_document)
+        document_bar.documentCloseRequested.connect(self._close_document)
+        self._document_bar = document_bar
+        toolbar.addWidget(document_bar)
         for action in self._tool_actions:
             self.addAction(action)
         self.addToolBar(toolbar)
@@ -372,8 +386,11 @@ class MainWindow(QMainWindow):
     def _dock(self, title: str, widget: QWidget) -> QDockWidget:
         dock = QDockWidget(title, self)
         dock.setObjectName(f"{title.lower()}Dock")
-        dock.setWidget(widget)
-        dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetFeatureMask)
+        dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+        native_title_bar = QWidget(dock)
+        native_title_bar.setFixedHeight(1)
+        dock.setTitleBarWidget(native_title_bar)
+        dock.setWidget(DockPanel(dock, widget, self))
         return dock
 
     def _create_blank_document(self) -> None:
@@ -381,11 +398,8 @@ class MainWindow(QMainWindow):
             return
         document = self._controller.create_document("Untitled", 800, 600)
         self._show_document(document, "Created blank document")
-        self._project_path = None
 
     def _show_new_project(self) -> None:
-        if not self._confirm_document_transition():
-            return
         dialog = NewProjectDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -393,7 +407,6 @@ class MainWindow(QMainWindow):
         try:
             document = self._controller.create_document(values.name, values.width, values.height)
             self._show_document(document, "Created project")
-            self._project_path = None
         except (OSError, ValueError, RuntimeError) as error:
             QMessageBox.critical(self, "New project failed", str(error))
 
@@ -416,6 +429,46 @@ class MainWindow(QMainWindow):
         )
         self._sidebar.properties.set_schema(schema)
         self._sidebar.select_panel("Properties")
+
+    def _switch_document(self, document_id: object) -> None:
+        try:
+            document = self._controller.activate_document(document_id)
+            self._show_document(document, "Switched document")
+        except (KeyError, RuntimeError) as error:
+            QMessageBox.critical(self, "Switch document failed", str(error))
+
+    def _close_document(self, document_id: object) -> None:
+        try:
+            document = self._controller.activate_document(document_id)
+            if document.is_dirty and not self._confirm_document_transition():
+                return
+            self._controller.close_document(document_id)
+            self._project_paths.pop(str(document_id), None)
+            remaining = self._controller.open_documents
+            if remaining:
+                self._controller.activate_document(remaining[0].id)
+                self._show_document(remaining[0], "Closed document")
+            else:
+                self._canvas.clear_preview()
+                self._document_bar.set_documents((), "")
+                self.setWindowTitle("DIP Studio")
+        except (KeyError, RuntimeError) as error:
+            QMessageBox.critical(self, "Close document failed", str(error))
+
+    def _copy_selected_layers(self) -> None:
+        selected = self._selected_layer_ids()
+        if not selected:
+            return
+        count = self._controller.copy_layers(selected)
+        self.statusBar().showMessage(f"Copied {count} layer(s)")
+
+    def _paste_layers(self) -> None:
+        try:
+            document = self._controller.paste_layers()
+            selected = tuple(layer.id for layer in document.layers[-1:])
+            self._show_document(document, "Pasted layers", selected)
+        except RuntimeError as error:
+            self.statusBar().showMessage(str(error))
 
     def _change_layer(
         self, layer_ids: tuple[object, ...], visible: bool | None, opacity: float | None
@@ -564,8 +617,6 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Redo", str(error))
 
     def _open_project(self) -> None:
-        if not self._confirm_document_transition():
-            return
         filename, _ = QFileDialog.getOpenFileName(
             self, "Open project", "", "DIP projects (*.dip);;All files (*)"
         )
@@ -573,13 +624,16 @@ class MainWindow(QMainWindow):
             return
         try:
             document = self._controller.open_project(Path(filename))
-            self._project_path = Path(filename)
+            self._project_paths[str(document.id)] = Path(filename)
             self._show_document(document, "Opened project")
         except (OSError, ValueError, RuntimeError) as error:
             QMessageBox.critical(self, "Open project failed", str(error))
 
     def _save_project(self) -> bool:
-        path = self._project_path
+        document = self._controller.document
+        if document is None:
+            return False
+        path = self._project_paths.get(str(document.id))
         if path is None:
             filename, _ = QFileDialog.getSaveFileName(
                 self, "Save project", "", "DIP projects (*.dip);;All files (*)"
@@ -591,7 +645,7 @@ class MainWindow(QMainWindow):
                 path = path.with_suffix(".dip")
         try:
             document = self._controller.save_project(path)
-            self._project_path = path
+            self._project_paths[str(document.id)] = path
             self._show_document(document, "Saved project")
             return True
         except (OSError, RuntimeError, ValueError) as error:
@@ -608,7 +662,6 @@ class MainWindow(QMainWindow):
             return
         try:
             document = self._controller.open_image(Path(filename))
-            self._project_path = None
             self._show_document(document, "Opened image")
         except (OSError, ValueError, RuntimeError) as error:
             QMessageBox.critical(self, "Open image failed", str(error))
@@ -635,11 +688,17 @@ class MainWindow(QMainWindow):
             f"{self._canvas.zoom:.0%}"
         )
         self._update_window_title(document)
+        self._document_bar.set_documents(
+            self._controller.open_documents, document.id
+        )
 
     def _update_window_title(self, document: DocumentView) -> None:
         active = self._controller.document
         dirty_marker = "*" if active is not None and active.is_dirty else ""
         self.setWindowTitle(f"{dirty_marker}{document.name} — DIP Studio")
+        self._document_bar.set_documents(
+            self._controller.open_documents, document.id
+        )
 
     def _confirm_document_transition(self) -> bool:
         document = self._controller.document
@@ -673,6 +732,8 @@ class MainWindow(QMainWindow):
             ("Move selected layer down", lambda: self._move_selected_layer(1)),
             ("Toggle selected layer visibility", self._toggle_selected_visibility),
             ("Rename selected layer", self._rename_selected_layer),
+            ("Copy selected layers", self._copy_selected_layers),
+            ("Paste layers", self._paste_layers),
             ("Toggle theme", self._toggle_theme),
             ("Zoom in", self._zoom_in),
             ("Zoom out", self._zoom_out),
@@ -862,11 +923,49 @@ class MainWindow(QMainWindow):
                 background: {self._tokens.surface};
                 color: {self._tokens.foreground};
             }}
-            QDockWidget::title {{
-                background: {self._tokens.surface_alt};
+            QWidget#dockPanel {{
+                background: {self._tokens.surface};
+            }}
+            QWidget#dockPanel {{
+                background: {self._tokens.surface};
+            }}
+            QWidget#dockPanelHeader {{
+                background: {self._tokens.surface};
+                border: 0;
+            }}
+            QLabel#dockGrip {{
+                background: transparent;
+                color: {self._tokens.foreground_muted};
+                font-size: 9px;
+                letter-spacing: 2px;
+            }}
+            QLabel#dockGrip:hover {{
                 color: {self._tokens.foreground};
-                padding: 7px 10px;
-                font-weight: 600;
+            }}
+            QToolButton#dockCloseButton {{
+                background: transparent;
+                color: {self._tokens.foreground_muted};
+                border: 0;
+                font-size: 13px;
+            }}
+            QToolButton#dockCloseButton:hover {{
+                background: {self._tokens.accent};
+                color: {self._tokens.accent_foreground};
+            }}
+            QToolButton#dockCollapseButton {{
+                background: transparent;
+                color: {self._tokens.foreground_muted};
+                border: 0;
+                font-size: 13px;
+                padding: 0;
+            }}
+            QToolButton#dockCollapseButton:hover {{
+                background: {self._tokens.field};
+                color: {self._tokens.foreground};
+            }}
+            QFrame#dockDropIndicator {{
+                background: {self._tokens.accent};
+                border: 2px solid {self._tokens.accent};
             }}
             QToolBar {{
                 border: 0;

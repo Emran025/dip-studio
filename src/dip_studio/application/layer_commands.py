@@ -1,9 +1,10 @@
 """Undoable layer state transitions."""
 
+from uuid import uuid4
+
 from dip_studio.application.commands import Command
 from dip_studio.application.session import DocumentSession
 from dip_studio.domain.model import ImageDocument, Layer, LayerId
-from uuid import uuid4
 
 
 class ChangeLayer(Command):
@@ -128,6 +129,29 @@ class AddLayer(Command):
     def undo(self, session: DocumentSession) -> None:
         if self._previous is None:
             raise RuntimeError("Add layer command has not executed")
+        session.replace(self._previous)
+
+
+class PasteLayers(Command):
+    def __init__(self, layers: tuple[Layer, ...], index: int | None = None) -> None:
+        if not layers:
+            raise ValueError("At least one layer is required")
+        self._layers = layers
+        self._index = index
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        index = len(document.layers) if self._index is None else self._index
+        if not 0 <= index <= len(document.layers):
+            raise IndexError("Layer insertion index is out of range")
+        self._previous = document
+        updated = document.layers[:index] + self._layers + document.layers[index:]
+        session.replace(document.changed(layers=updated))
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Paste layers command has not executed")
         session.replace(self._previous)
 
 

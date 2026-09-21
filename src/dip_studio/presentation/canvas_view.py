@@ -28,6 +28,12 @@ class CanvasView(QWidget):
         self._source_image = image
         self._render_zoomed()
 
+    def clear_preview(self) -> None:
+        self._source_image = None
+        self._pixmap = None
+        self._pan = QPoint()
+        self.update()
+
     def set_grid_enabled(self, enabled: bool) -> None:
         self._grid_enabled = enabled
         self.update()
