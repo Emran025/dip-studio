@@ -1,6 +1,6 @@
 """Photoshop-style right workspace sidebar with navigable panel tabs."""
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSignalBlocker, QTimer, QSize, Qt, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -413,19 +413,29 @@ class RightSidebar(QWidget):
             selected_item.data(Qt.ItemDataRole.UserRole)
             for selected_item in self.layers.selectedItems()
         )
-        item.setIcon(
-            1,
-            icon_for(
-                "layer.visible" if visible else "layer.hidden"
-            ),
-        )
+        # Changing an item's icon also emits ``itemChanged`` in Qt. Block the
+        # tree signal while updating the presentation or this handler calls
+        # itself recursively until Python exhausts the stack.
+        with QSignalBlocker(self.layers):
+            item.setIcon(
+                1,
+                icon_for("layer.visible" if visible else "layer.hidden"),
+            )
         if self._layer_callback is not None:
-            self._layer_callback(
-                selected or (layer_id,),
-                visible,
-                None,
-                None,
-                None,
+            callback = self._layer_callback
+            callback_ids = selected or (layer_id,)
+            # Let Qt finish delivering itemChanged before the main window
+            # rebuilds the tree; deleting the item during this signal causes
+            # native Qt access violations on some PySide6 versions.
+            QTimer.singleShot(
+                0,
+                lambda: callback(
+                    callback_ids,
+                    visible,
+                    None,
+                    None,
+                    None,
+                ),
             )
 
     def _opacity_changed(self, value: float) -> None:

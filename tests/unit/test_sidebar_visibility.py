@@ -36,4 +36,5 @@ def test_visibility_callback_can_rebuild_tree_without_stale_item_error() -> None
     item = sidebar.layers.topLevelItem(0)
     assert item is not None
     item.setCheckState(0, Qt.CheckState.Unchecked)
+    app.processEvents()
     assert sidebar.layers.topLevelItem(0).checkState(0) == Qt.CheckState.Unchecked
