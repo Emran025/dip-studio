@@ -6,6 +6,9 @@ a buffer_id reference, keeping the domain layer free of NumPy.
 from __future__ import annotations
 
 import threading
+import time
+from collections.abc import Iterator
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
@@ -14,9 +17,81 @@ import numpy as np
 class ImageDataStore:
     """Thread-safe registry of id → ndarray with Copy-on-Write support."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        max_bytes: int | None = None,
+        *,
+        max_items: int | None = None,
+        limit_bytes: int | None = None,
+        limit: int | None = None,
+    ) -> None:
+        if max_bytes is not None and limit_bytes is not None:
+            raise ValueError("Use either max_bytes or limit_bytes, not both")
+        if max_bytes is None:
+            max_bytes = limit_bytes if limit_bytes is not None else limit
+        if max_bytes is not None and max_bytes < 0:
+            raise ValueError("max_bytes must be >= 0")
+        if max_items is not None and max_items < 0:
+            raise ValueError("max_items must be >= 0")
+
         self._buffers: dict[str, np.ndarray] = {}
+        self._metadata: dict[str, dict[str, Any]] = {}
+        self._version: dict[str, int] = {}   # per-buffer mutation counter
         self._lock = threading.Lock()
+        self.max_bytes: int | None = max_bytes
+        self.max_items: int | None = max_items
+        self._bytes_used = 0
+
+    @staticmethod
+    def _array_size(array: np.ndarray) -> int:
+        if not isinstance(array, np.ndarray):
+            raise TypeError("Expected a NumPy ndarray")
+        return int(np.prod(array.shape, dtype=np.int64) * array.itemsize)
+
+    def _ensure_capacity(self, array: np.ndarray) -> None:
+        if self.max_bytes is None:
+            return
+        required = self._array_size(array)
+        if self._bytes_used + required > self.max_bytes:
+            raise MemoryError(
+                f"Buffer allocation exceeds configured memory limit: "
+                f"{self._bytes_used + required} > {self.max_bytes} bytes"
+            )
+
+    def total_bytes(self) -> int:
+        with self._lock:
+            return self._bytes_used
+
+    def bytes_used(self) -> int:
+        return self.total_bytes()
+
+    def buffer_size(self, buffer_id: str) -> int:
+        with self._lock:
+            meta = self._metadata.get(buffer_id)
+            if meta is None:
+                raise KeyError(f"Buffer not found: {buffer_id}")
+            return int(meta["bytes"])
+
+    def buffer_metadata(self, buffer_id: str) -> dict[str, Any]:
+        with self._lock:
+            meta = self._metadata.get(buffer_id)
+            if meta is None:
+                raise KeyError(f"Buffer not found: {buffer_id}")
+            return dict(meta)
+
+    def metadata(self, buffer_id: str) -> dict[str, Any]:
+        return self.buffer_metadata(buffer_id)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._buffers.clear()
+            self._metadata.clear()
+            self._version.clear()
+            self._bytes_used = 0
+
+    def __contains__(self, buffer_id: object) -> bool:
+        with self._lock:
+            return buffer_id in self._buffers
 
     # ------------------------------------------------------------------ #
     # Allocation                                                           #
@@ -24,10 +99,48 @@ class ImageDataStore:
 
     def allocate(self, array: np.ndarray) -> str:
         """Store *array* (by reference) and return its unique buffer_id."""
-        buffer_id = str(uuid4())
+        if not isinstance(array, np.ndarray):
+            raise TypeError("allocate() expects a NumPy ndarray")
         with self._lock:
+            required = self._array_size(array)
+            if self.max_bytes is not None and self._bytes_used + required > self.max_bytes:
+                raise MemoryError(
+                    f"Buffer allocation exceeds configured memory limit: "
+                    f"{self._bytes_used + required} > {self.max_bytes} bytes"
+                )
+            if self.max_items is not None and len(self._buffers) >= self.max_items:
+                raise MemoryError(f"Buffer store has reached its item limit: {self.max_items}")
+
+            buffer_id = str(uuid4())
             self._buffers[buffer_id] = array
+            self._version[buffer_id] = 0
+            self._metadata[buffer_id] = {
+                "shape": tuple(int(v) for v in array.shape),
+                "dtype": str(array.dtype),
+                "bytes": required,
+                "itemsize": int(array.itemsize),
+                "created_at": time.time_ns(),
+                "last_modified": time.time_ns(),
+            }
+            self._bytes_used += required
         return buffer_id
+
+    def version(self, buffer_id: str) -> int:
+        """Return the mutation version counter for *buffer_id* (0 = freshly allocated).
+
+        Used by :class:`~dip_studio.infrastructure.processing_cache.ProcessingCache`
+        to detect when a cached result has become stale.
+        """
+        with self._lock:
+            return self._version.get(buffer_id, 0)
+
+    def touch(self, buffer_id: str) -> None:
+        """Increment the version counter, invalidating cached results for *buffer_id*."""
+        with self._lock:
+            if buffer_id in self._version:
+                self._version[buffer_id] += 1
+                if buffer_id in self._metadata:
+                    self._metadata[buffer_id]["last_modified"] = time.time_ns()
 
     def allocate_mask(self, array: np.ndarray) -> str:
         """Store a float32 mask array (values 0.0–1.0) and return its buffer_id."""
@@ -47,7 +160,14 @@ class ImageDataStore:
     def release(self, buffer_id: str) -> None:
         """Remove *buffer_id* from the store, freeing the array reference."""
         with self._lock:
-            self._buffers.pop(buffer_id, None)
+            if buffer_id in self._buffers:
+                meta = self._metadata.get(buffer_id)
+                if meta is not None:
+                    self._bytes_used -= int(meta.get("bytes", 0))
+                    self._bytes_used = max(0, self._bytes_used)
+                self._buffers.pop(buffer_id, None)
+                self._metadata.pop(buffer_id, None)
+                self._version.pop(buffer_id, None)
 
     def copy_on_write(self, buffer_id: str) -> str:
         """Return a new buffer_id holding a fresh copy of *buffer_id*'s data."""
@@ -70,12 +190,18 @@ class ImageDataStore:
         upper_blend_mode: str = "normal",
     ) -> str:
         """Composite two layer buffers into a single buffer."""
-        from dip_studio.rendering.compositor import _alpha_composite, _resize_array, _to_rgba
+        from dip_studio.rendering.compositor import (
+            _alpha_composite,
+            _fit_array_to_document,
+            _to_rgba,
+        )
 
         upper_arr = _to_rgba(self.get(upper_buffer_id)).copy()
         lower_arr = _to_rgba(self.get(lower_buffer_id))
         if upper_arr.shape[:2] != lower_arr.shape[:2]:
-            upper_arr = _resize_array(upper_arr, lower_arr.shape[1], lower_arr.shape[0])
+            upper_arr = _fit_array_to_document(
+                upper_arr, lower_arr.shape[1], lower_arr.shape[0]
+            )
         if upper_opacity < 1.0:
             upper_arr[:, :, 3] = (
                 upper_arr[:, :, 3].astype(np.float32) * upper_opacity
