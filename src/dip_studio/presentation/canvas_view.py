@@ -1,4 +1,4 @@
-"""Interactive canvas preview widget for the editor presentation layer."""
+﻿"""Interactive canvas preview widget for the editor presentation layer."""
 from __future__ import annotations
 
 from collections.abc import Callable

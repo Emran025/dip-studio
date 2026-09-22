@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QColor, QKeySequence, QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -272,23 +272,28 @@ class ToolParametersPanel(QWidget):
                 widget = QSpinBox()
                 widget.setRange(int(definition.minimum), int(definition.maximum))
                 widget.setValue(int(definition.default))
+                widget.valueChanged.connect(lambda _v: self.previewRequested.emit(self.values()))
                 control = widget
             elif definition.kind == "number":
                 widget = QDoubleSpinBox()
                 widget.setRange(definition.minimum, definition.maximum)
                 widget.setValue(float(definition.default))
+                widget.valueChanged.connect(lambda _v: self.previewRequested.emit(self.values()))
                 control = widget
             elif definition.kind == "choice":
                 widget = QComboBox()
                 widget.addItems(list(definition.choices))
                 widget.setCurrentText(str(definition.default))
+                widget.currentTextChanged.connect(lambda _t: self.previewRequested.emit(self.values()))
                 control = widget
             elif definition.kind == "boolean":
                 widget = QCheckBox()
                 widget.setChecked(bool(definition.default))
+                widget.toggled.connect(lambda _c: self.previewRequested.emit(self.values()))
                 control = widget
             else:
                 widget = QLineEdit(str(definition.default))
+                widget.editingFinished.connect(lambda: self.previewRequested.emit(self.values()))
                 control = widget
             self._controls[str(index)] = control
             self._form.addRow(definition.label, control)
@@ -339,8 +344,75 @@ class ToolParametersPanel(QWidget):
 
 # ──────────────────────────── Analysis Dialogs ───────────────────────────────
 
+class _HistogramWidget(QWidget):
+    """QPainter-based per-channel histogram bar chart.
+
+    Renders 256 frequency bins as filled rectangles on a dark background using
+    a log scale so both peak and shadow detail are visible simultaneously.
+    """
+
+    _CHANNEL_COLORS: dict[str, tuple[int, int, int]] = {
+        "R": (220, 60, 60),
+        "G": (60, 200, 60),
+        "B": (60, 100, 220),
+        "L": (160, 160, 160),
+        "A": (200, 200, 60),
+    }
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._counts: list[int] = []
+        self._channel: str = "L"
+        self.setMinimumSize(512, 200)
+
+    def set_data(self, channel: str, counts: list[int]) -> None:
+        """Update the displayed channel data and trigger a repaint."""
+        self._channel = channel
+        self._counts = counts
+        self.update()
+
+    def paintEvent(self, event: object) -> None:  # type: ignore[override]
+        import math
+
+        w = self.width()
+        h = self.height()
+        n = len(self._counts)
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            # Dark background
+            painter.fillRect(0, 0, w, h, QColor(28, 28, 28))
+            if n == 0:
+                return
+            # Log-scale counts for better visual dynamic range.
+            log_counts = [math.log1p(c) for c in self._counts]
+            max_log = max(log_counts) if log_counts else 1.0
+            if max_log == 0.0:
+                max_log = 1.0
+            r, g, b = self._CHANNEL_COLORS.get(self._channel, (160, 160, 160))
+            bar_color = QColor(r, g, b, 200)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(bar_color)
+            chart_h = h - 24  # leave 24 px for x-axis labels
+            bar_w = w / n
+            for i, val in enumerate(log_counts):
+                bar_h = int((val / max_log) * chart_h)
+                x = int(i * bar_w)
+                bw = max(1, int(bar_w) + (1 if i < n - 1 else 0))
+                painter.drawRect(x, chart_h - bar_h, bw, bar_h)
+            # X-axis
+            painter.setPen(QColor(120, 120, 120))
+            painter.drawLine(0, chart_h, w, chart_h)
+            painter.setPen(QColor(180, 180, 180))
+            painter.drawText(2, h - 4, "0")
+            painter.drawText(w // 2 - 10, h - 4, "128")
+            painter.drawText(w - 24, h - 4, "255")
+        finally:
+            painter.end()
+
+
 class HistogramDialog(QDialog):
-    """Display per-channel pixel intensity histogram using a simple Qt bar widget."""
+    """Display per-channel pixel intensity histogram using a QPainter bar chart."""
 
     def __init__(
         self,
@@ -355,52 +427,29 @@ class HistogramDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Histogram")
         self.setModal(False)
-        self.setMinimumSize(520, 360)
-        self.resize(640, 400)
+        self.setMinimumSize(520, 320)
+        self.resize(640, 380)
 
         self._data = histogram_data
         self._channel_selector = QComboBox()
         self._channel_selector.addItems(list(histogram_data.keys()))
         self._channel_selector.currentTextChanged.connect(self._refresh)
 
-        from PySide6.QtWidgets import QLabel, QScrollArea
-
-        self._chart_label = QLabel()
-        self._chart_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
-        self._chart_label.setMinimumSize(480, 256)
-
-        scroll = QScrollArea()
-        scroll.setWidget(self._chart_label)
-        scroll.setWidgetResizable(True)
+        self._histogram_widget = _HistogramWidget(self)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._channel_selector)
-        layout.addWidget(scroll)
+        layout.addWidget(self._histogram_widget, stretch=1)
         layout.addWidget(buttons)
 
         self._refresh(self._channel_selector.currentText())
 
     def _refresh(self, channel: str) -> None:
         counts = self._data.get(channel, [])
-        if not counts:
-            self._chart_label.setText("No data")
-            return
-        max_count = max(counts) or 1
-        bar_height = 200
-        lines: list[str] = []
-        # ASCII bar chart: one character column per 8 intensity bins
-        for bucket in range(0, 256, 8):
-            bucket_val = max(counts[bucket:bucket + 8]) if bucket + 8 <= len(counts) else 0
-            bars = int(bucket_val / max_count * bar_height)
-            lines.append(f"{bucket:3d} │{'█' * bars}")
-        lines.append("    └" + "─" * 25 + " intensity →")
-        self._chart_label.setText("\n".join(lines))
-        self._chart_label.setFont(
-            self._chart_label.font().__class__("Courier New", 8)
-        )
+        self._histogram_widget.set_data(channel, counts)
 
     @staticmethod
     def from_buffer(

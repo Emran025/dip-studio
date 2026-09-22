@@ -1,6 +1,7 @@
 """Theme-aware Qt workspace composition; editor behavior stays in application."""
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -43,7 +44,9 @@ from dip_studio.application.shortcut_registry import (
     default_shortcut_registry,
 )
 from dip_studio.application.tool_registry import ToolDefinition
+from dip_studio.core.errors import CancellationError
 from dip_studio.presentation.canvas_view import CanvasView
+from dip_studio.presentation.background_worker import BackgroundWorker
 from dip_studio.presentation.dialogs import (
     CommandPaletteDialog,
     ExportDialog,
@@ -98,6 +101,9 @@ class MainWindow(QMainWindow):
         self._canvas = CanvasView()
         self._selection_origin: QPoint | None = None
         self._active_tool_id: str | None = None
+        self._processing_worker = BackgroundWorker(self)
+        self._processing_token = None
+        self._ui_commands: dict[str, Callable[[], None]] = {}
         self.setWindowTitle("DIP Studio")
         self.setWindowIcon(icon_for("app"))
         self.resize(1200, 760)
@@ -122,25 +128,43 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "Some saved shortcuts were ignored because they are invalid or unavailable"
             )
+        if self._controller.plugin_failures:
+            self.statusBar().showMessage(
+                f"{len(self._controller.plugin_failures)} plugin activation issue(s); "
+                "see the application log",
+                8000,
+            )
 
     def _create_actions(self) -> None:
         self._new_action = QAction("New", self)
         self._new_action.setIcon(icon_for("file.new"))
         self._new_action.setShortcut(QKeySequence(self._shortcut("file.new")))
-        self._new_action.triggered.connect(self._show_new_project)
+        self._register_ui_command("file.new", self._show_new_project)
+        self._new_action.triggered.connect(
+            lambda _checked=False: self._dispatch_ui_command("file.new")
+        )
         self._open_project_action = QAction("Open project...", self)
         self._open_project_action.triggered.connect(self._open_project)
         self._save_project_action = QAction("Save project", self)
         self._save_project_action.setShortcut(QKeySequence(self._shortcut("file.save")))
-        self._save_project_action.triggered.connect(self._save_project)
+        self._register_ui_command("file.save", self._save_project)
+        self._save_project_action.triggered.connect(
+            lambda _checked=False: self._dispatch_ui_command("file.save")
+        )
         self._undo_action = QAction("Undo", self)
         self._undo_action.setIcon(icon_for("undo"))
         self._undo_action.setShortcut(QKeySequence(self._shortcut("edit.undo")))
-        self._undo_action.triggered.connect(self._undo)
+        self._register_ui_command("edit.undo", self._undo)
+        self._undo_action.triggered.connect(
+            lambda _checked=False: self._dispatch_ui_command("edit.undo")
+        )
         self._redo_action = QAction("Redo", self)
         self._redo_action.setIcon(icon_for("redo"))
         self._redo_action.setShortcut(QKeySequence(self._shortcut("edit.redo")))
-        self._redo_action.triggered.connect(self._redo)
+        self._register_ui_command("edit.redo", self._redo)
+        self._redo_action.triggered.connect(
+            lambda _checked=False: self._dispatch_ui_command("edit.redo")
+        )
         self._add_layer_action = QAction("Add layer", self)
         self._add_layer_action.setShortcut(QKeySequence(self._shortcut("layer.add")))
         self._add_layer_action.triggered.connect(self._add_layer)
@@ -236,13 +260,34 @@ class MainWindow(QMainWindow):
             "canvas.zoom_out": self._zoom_out,
         }
         for command_id, handler in handlers.items():
-            self._input_dispatcher.register(command_id, handler)
+            self._register_ui_command(command_id, handler)
+            self._input_dispatcher.register(
+                command_id,
+                lambda command_id=command_id: self._dispatch_ui_command(command_id),
+            )
         for tool in self._controller.tools:
             if tool.shortcut:
-                self._input_dispatcher.register(
-                    f"tool.{tool.id}",
-                    lambda value=tool.id: self._select_tool(value),
+                command_id = f"tool.{tool.id}"
+                self._register_ui_command(
+                    command_id, lambda value=tool.id: self._select_tool(value)
                 )
+                self._input_dispatcher.register(
+                    command_id,
+                    lambda command_id=command_id: self._dispatch_ui_command(command_id),
+                )
+
+    def _register_ui_command(self, command_id: str, handler: Callable[[], None]) -> None:
+        """Register the single presentation command path used by UI surfaces."""
+        if not command_id.strip():
+            raise ValueError("Command id cannot be empty")
+        self._ui_commands[command_id] = handler
+
+    def _dispatch_ui_command(self, command_id: str) -> None:
+        try:
+            handler = self._ui_commands[command_id]
+        except KeyError as error:
+            raise KeyError(f"Unknown UI command: {command_id}") from error
+        handler()
 
     def _focus_state(self, widget: QWidget | None) -> FocusState:
         if widget is None:
@@ -267,6 +312,27 @@ class MainWindow(QMainWindow):
         state = self._focus_state(widget)
         if state.input_field or state.modal_dialog:
             return super().eventFilter(watched, event)
+        if (
+            self._active_tool_id == "crop"
+            and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+        ):
+            self._commit_crop_from_selection()
+            event.accept()
+            return True
+        if self._canvas.hasFocus() and event.key() in (
+            Qt.Key.Key_Plus,
+            Qt.Key.Key_Equal,
+        ):
+            self._canvas.zoom_in()
+            event.accept()
+            return True
+        if self._canvas.hasFocus() and event.key() in (
+            Qt.Key.Key_Minus,
+            Qt.Key.Key_Underscore,
+        ):
+            self._canvas.zoom_out()
+            event.accept()
+            return True
         key = QKeySequence(event.modifiers() | Qt.KeyboardModifier(event.key())).toString()
         if not key:
             return super().eventFilter(watched, event)
@@ -301,8 +367,30 @@ class MainWindow(QMainWindow):
             except KeyError:
                 self._shortcuts.register(ShortcutBinding(command_id, shortcut, "Tool", 20))
             action.setShortcut(QKeySequence(shortcut))
-        action.triggered.connect(lambda _checked=False, value=tool_id: self._select_tool(value))
+        command_id = f"tool.{tool_id}"
+        self._register_ui_command(
+            command_id, lambda value=tool_id: self._select_tool(value)
+        )
+        action.triggered.connect(
+            lambda _checked=False, command_id=command_id:
+            self._dispatch_ui_command(command_id)
+        )
         return action
+
+    def _processing_action(
+        self,
+        operation: str,
+        parameters: dict[str, object],
+        *,
+        dialog: bool = False,
+    ) -> Callable[[], None]:
+        command_id = f"processing.{operation}.dialog" if dialog else f"processing.{operation}"
+        if dialog:
+            handler = lambda: self._apply_filter_dialog(operation)
+        else:
+            handler = lambda: self._quick_apply(operation, parameters)
+        self._register_ui_command(command_id, handler)
+        return lambda command_id=command_id: self._dispatch_ui_command(command_id)
 
     def _create_menus(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -400,41 +488,75 @@ class MainWindow(QMainWindow):
 
         filter_menu = self.menuBar().addMenu("Filter")
         blur_menu = filter_menu.addMenu("Blur")
-        blur_menu.addAction("Gaussian Blur...").triggered.connect(lambda: self._apply_filter_dialog("gaussian_blur"))
-        blur_menu.addAction("Median Blur...").triggered.connect(lambda: self._apply_filter_dialog("median_blur"))
-        blur_menu.addAction("Bilateral Filter...").triggered.connect(lambda: self._apply_filter_dialog("bilateral_filter"))
+        blur_menu.addAction("Gaussian Blur...").triggered.connect(
+            self._processing_action("gaussian_blur", {}, dialog=True)
+        )
+        blur_menu.addAction("Median Blur...").triggered.connect(
+            self._processing_action("median_blur", {}, dialog=True)
+        )
+        blur_menu.addAction("Bilateral Filter...").triggered.connect(
+            self._processing_action("bilateral_filter", {}, dialog=True)
+        )
 
         edge_menu = filter_menu.addMenu("Edges")
-        edge_menu.addAction("Sobel").triggered.connect(lambda: self._quick_apply("sobel", {}))
-        edge_menu.addAction("Canny...").triggered.connect(lambda: self._apply_filter_dialog("canny"))
-        edge_menu.addAction("Laplacian").triggered.connect(lambda: self._quick_apply("laplacian", {}))
+        edge_menu.addAction("Sobel").triggered.connect(self._processing_action("sobel", {}))
+        edge_menu.addAction("Canny...").triggered.connect(
+            self._processing_action("canny", {}, dialog=True)
+        )
+        edge_menu.addAction("Laplacian").triggered.connect(
+            self._processing_action("laplacian", {})
+        )
 
         adjust_menu = filter_menu.addMenu("Adjust")
-        adjust_menu.addAction("Negative").triggered.connect(lambda: self._quick_apply("negative", {}))
-        adjust_menu.addAction("Gamma...").triggered.connect(lambda: self._apply_filter_dialog("gamma"))
-        adjust_menu.addAction("Log Transform").triggered.connect(lambda: self._quick_apply("log_transform", {"c": "1.0"}))
-        adjust_menu.addAction("Brightness & Contrast...").triggered.connect(lambda: self._apply_filter_dialog("brightness_contrast"))
+        adjust_menu.addAction("Negative").triggered.connect(
+            self._processing_action("negative", {})
+        )
+        adjust_menu.addAction("Gamma...").triggered.connect(
+            self._processing_action("gamma", {}, dialog=True)
+        )
+        adjust_menu.addAction("Log Transform").triggered.connect(
+            self._processing_action("log_transform", {"c": "1.0"})
+        )
+        adjust_menu.addAction("Brightness & Contrast...").triggered.connect(
+            self._processing_action("brightness_contrast", {}, dialog=True)
+        )
 
         hist_menu = filter_menu.addMenu("Histogram")
-        hist_menu.addAction("Equalize").triggered.connect(lambda: self._quick_apply("histogram_equalization", {}))
-        hist_menu.addAction("CLAHE...").triggered.connect(lambda: self._apply_filter_dialog("clahe"))
+        hist_menu.addAction("Equalize").triggered.connect(
+            self._processing_action("histogram_equalization", {})
+        )
+        hist_menu.addAction("CLAHE...").triggered.connect(
+            self._processing_action("clahe", {}, dialog=True)
+        )
 
         morph_menu = filter_menu.addMenu("Morphology")
-        morph_menu.addAction("Erode").triggered.connect(lambda: self._quick_apply("erode", {}))
-        morph_menu.addAction("Dilate").triggered.connect(lambda: self._quick_apply("dilate", {}))
-        morph_menu.addAction("Open").triggered.connect(lambda: self._quick_apply("morph_open", {}))
-        morph_menu.addAction("Close").triggered.connect(lambda: self._quick_apply("morph_close", {}))
+        morph_menu.addAction("Erode").triggered.connect(self._processing_action("erode", {}))
+        morph_menu.addAction("Dilate").triggered.connect(self._processing_action("dilate", {}))
+        morph_menu.addAction("Open").triggered.connect(
+            self._processing_action("morph_open", {})
+        )
+        morph_menu.addAction("Close").triggered.connect(
+            self._processing_action("morph_close", {})
+        )
 
         color_menu = filter_menu.addMenu("Color")
-        color_menu.addAction("Grayscale").triggered.connect(lambda: self._quick_apply("grayscale", {}))
-        color_menu.addAction("Hue & Saturation...").triggered.connect(lambda: self._apply_filter_dialog("hue_saturation"))
+        color_menu.addAction("Grayscale").triggered.connect(
+            self._processing_action("grayscale", {})
+        )
+        color_menu.addAction("Hue & Saturation...").triggered.connect(
+            self._processing_action("hue_saturation", {}, dialog=True)
+        )
 
         analysis_menu = self.menuBar().addMenu("Analysis")
         analysis_menu.addAction("Histogram", self._show_histogram)
         analysis_menu.addAction("Image Statistics", self._show_image_stats)
         analysis_menu.addSeparator()
-        analysis_menu.addAction("Threshold...", lambda: self._apply_filter_dialog("threshold"))
-        analysis_menu.addAction("Segment...", lambda: self._apply_filter_dialog("segment"))
+        analysis_menu.addAction(
+            "Threshold...", self._processing_action("threshold", {}, dialog=True)
+        )
+        analysis_menu.addAction(
+            "Segment...", self._processing_action("segment", {}, dialog=True)
+        )
 
         help_menu = self.menuBar().addMenu("Help")
         help_menu.addAction("About DIP Studio").triggered.connect(self._show_about)
@@ -609,7 +731,7 @@ class MainWindow(QMainWindow):
             self._tool_status_label.setText(f"Tool: {tool.name}")
 
     def _on_layer_selection_changed(self, layer_id: object) -> None:
-        """Handle layer selection change in sidebar layer list."""
+        """Handle layer selection change in sidebar layer list or canvas hit-testing."""
         if layer_id is None:
             return
         doc = self._controller.document
@@ -618,13 +740,20 @@ class MainWindow(QMainWindow):
         layer = next((l for l in doc.layers if l.id == layer_id), None)
         if layer is not None:
             self.statusBar().showMessage(f"Active layer: {layer.name}")
+            if hasattr(self._controller, "set_active_layer"):
+                self._controller.set_active_layer(layer.id)  # type: ignore[arg-type]
+            rect = self._selected_layer_content_rect(doc, layer.id)
+            self._canvas.set_active_layer_rect(
+                *rect, layer.name, doc.image.width, doc.image.height
+            )
+            from dip_studio.application.presentation_bridge import is_text_layer
+            if self._active_tool_id == "text" and is_text_layer(layer):
+                self._show_text_layer_dialog(existing_layer=layer)
             if self._active_tool_id == "crop":
-                # Layer selection must not switch the active canvas tool.
                 self._controller.set_active_tool("crop")
                 self._tool_panel.select_tool("crop", emit=False)
                 self._canvas.set_crop_mode(True)
                 self._update_canvas_cursor("crop")
-                rect = self._selected_layer_content_rect(doc, layer_id)
                 self._canvas.set_crop_rect_from_image(
                     *rect, doc.image.width, doc.image.height
                 )
@@ -640,7 +769,7 @@ class MainWindow(QMainWindow):
     def _selected_layer_content_rect(
         self, document: DocumentView, layer_id: object | None = None
     ) -> tuple[int, int, int, int]:
-        """Return the selected image layer's non-transparent content bounds."""
+        """Return the selected image layer's non-transparent content bounds (x, y, w, h)."""
         full = (0, 0, document.image.width, document.image.height)
         selected = (layer_id,) if layer_id is not None else self._selected_layer_ids()
         store = self._controller.data_store
@@ -656,13 +785,14 @@ class MainWindow(QMainWindow):
             source_height, source_width = buffer.shape[:2]
             if source_width <= 0 or source_height <= 0:
                 return full
-            scale_x = document.image.width / max(1, source_width)
-            scale_y = document.image.height / max(1, source_height)
+            t = getattr(layer, "transform", None)
+            tx = int(t.tx) if t else 0
+            ty = int(t.ty) if t else 0
             return (
-                0,
-                0,
-                max(1, round(source_width * scale_x)),
-                max(1, round(source_height * scale_y)),
+                tx,
+                ty,
+                max(1, source_width),
+                max(1, source_height),
             )
         except (KeyError, ValueError):
             return full
@@ -723,6 +853,8 @@ class MainWindow(QMainWindow):
     @property
     def _tool_event_handlers(self) -> dict[str, object]:
         return {
+            "move": self._tool_move_event,
+            "select": self._tool_move_event,
             "zoom": self._tool_zoom_event,
             "hand": self._tool_pan_event,
             "eyedropper": self._tool_eyedropper_event,
@@ -731,7 +863,63 @@ class MainWindow(QMainWindow):
             "ellipse_selection": self._tool_selection_event,
             "lasso": self._tool_selection_event,
             "polygon_selection": self._tool_selection_event,
+            # Paint tools (Phase 5)
+            "brush": self._tool_paint_event,
+            "pencil": self._tool_paint_event,
+            "eraser": self._tool_eraser_event,
+            "fill": self._tool_fill_event,
+            # Text tool (Phase E)
+            "text": self._tool_text_event,
         }
+
+    def _tool_move_event(self, event_type: str, event: object) -> None:
+        """Move / Select tool handler:
+        - Press: Hit-test canvas to auto-select clicked layer & start drag.
+        - Move: Translate selected layer position interactively on canvas.
+        - Release: Finalize layer move.
+        """
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+
+        if not isinstance(event, QMouseEvent):
+            return
+
+        doc = self._controller.document
+        if doc is None:
+            return
+
+        pos = event.position().toPoint()
+        ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            hit_layer = self._controller.hit_test_layer(ix, iy)
+            if hit_layer is not None:
+                self._sidebar.select_layer(hit_layer.id)
+                self._on_layer_selection_changed(hit_layer.id)
+            self._move_drag_start = (ix, iy)
+            self._canvas.setCursor(Qt.CursorShape.ClosedHandCursor if hit_layer else Qt.CursorShape.SizeAllCursor)
+
+        elif event_type == "move" and getattr(self, "_move_drag_start", None) is not None:
+            start_x, start_y = self._move_drag_start
+            dx = ix - start_x
+            dy = iy - start_y
+            if dx != 0 or dy != 0:
+                selected = self._selected_layer_ids()
+                if selected:
+                    target_id = selected[0]
+                    layer = next((l for l in doc.layers if l.id == target_id), None)
+                    if layer is not None and not layer.locked:
+                        doc = self._controller.translate_layer(target_id, dx, dy)
+                        self._move_drag_start = (ix, iy)
+                        rect = self._selected_layer_content_rect(doc, target_id)
+                        self._canvas.set_active_layer_rect(
+                            *rect, layer.name, doc.image.width, doc.image.height
+                        )
+                        self._refresh_preview()
+
+        elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
+            self._move_drag_start = None
+            self._canvas.setCursor(Qt.CursorShape.SizeAllCursor)
 
     def _tool_zoom_event(self, event_type: str, event: object) -> None:
         """Zoom tool: left-click zooms in, right-click zooms out."""
@@ -766,7 +954,34 @@ class MainWindow(QMainWindow):
             self._canvas.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def _tool_selection_event(self, event_type: str, event: object) -> None:
-        """Selection & Crop tools: interactive drag to define region on canvas."""
+        """Selection & Crop tools: interactive drag / click to define region on canvas.
+
+        Dispatches to sub-handlers based on the active tool id:
+          ``selection``          → rectangular marquee (drag)
+          ``crop``               → rectangular crop region (drag)
+          ``ellipse_selection``  → elliptical marquee (drag → rasterise)
+          ``lasso``              → freehand polygon (move → accumulate points)
+          ``polygon_selection``  → click-by-click polygon (release = add vertex)
+        """
+        from PySide6.QtCore import QRect, Qt
+        from PySide6.QtGui import QMouseEvent
+
+        if not isinstance(event, QMouseEvent):
+            return
+
+        tool = self._active_tool_id or ""
+
+        if tool in ("selection", "crop", ""):
+            self._rect_selection_event(event_type, event)
+        elif tool == "ellipse_selection":
+            self._ellipse_selection_event(event_type, event)
+        elif tool == "lasso":
+            self._lasso_event(event_type, event)
+        elif tool == "polygon_selection":
+            self._polygon_event(event_type, event)
+
+    def _rect_selection_event(self, event_type: str, event: object) -> None:
+        """Rectangle / crop drag handler (original logic)."""
         from PySide6.QtCore import QRect, Qt
         from PySide6.QtGui import QMouseEvent
 
@@ -790,7 +1005,7 @@ class MainWindow(QMainWindow):
                 w = max(1, ix2 - ix1)
                 h = max(1, iy2 - iy1)
                 self.statusBar().showMessage(
-                    f"{(self._active_tool_id or self._controller.active_tool_id).title()}: {w}×{h} at ({ix1}, {iy1})"
+                    f"{(self._active_tool_id or 'selection').title()}: {w}×{h} at ({ix1}, {iy1})"
                 )
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             if self._selection_origin is not None:
@@ -809,7 +1024,150 @@ class MainWindow(QMainWindow):
                         self.statusBar().showMessage(
                             f"Crop region: {w}×{h} at ({ix1}, {iy1}). Click Apply in Properties to crop."
                         )
+                    else:
+                        self._controller.set_selection(  # type: ignore[attr-defined]
+                            self._controller.make_selection(
+                                x=ix1, y=iy1, width=w, height=h, kind="rectangle"
+                            )
+                        ) if hasattr(self._controller, "set_selection") else None
                 self._selection_origin = None
+
+    def _ellipse_selection_event(self, event_type: str, event: object) -> None:
+        """Ellipse marquee: drag bounding box → rasterise on release."""
+        from PySide6.QtCore import QRect, Qt
+        from PySide6.QtGui import QMouseEvent
+
+        if not isinstance(event, QMouseEvent):
+            return
+        pos = event.position().toPoint()
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            self._selection_origin = pos
+            self._canvas.set_selection_rect(QRect(pos, pos))
+        elif event_type == "move" and self._selection_origin is not None:
+            rect = QRect(self._selection_origin, pos).normalized()
+            self._canvas.set_selection_rect(rect)
+        elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
+            if self._selection_origin is not None:
+                from PySide6.QtCore import QRect
+                rect = QRect(self._selection_origin, pos).normalized()
+                doc = self._controller.document
+                store = self._controller.data_store
+                if doc is not None and store is not None and rect.width() > 4 and rect.height() > 4:
+                    ix1, iy1 = self._canvas.widget_to_image_pos(
+                        rect.topLeft(), doc.image.width, doc.image.height
+                    )
+                    ix2, iy2 = self._canvas.widget_to_image_pos(
+                        rect.bottomRight(), doc.image.width, doc.image.height
+                    )
+                    bw = max(1, ix2 - ix1)
+                    bh = max(1, iy2 - iy1)
+                    try:
+                        from dip_studio.application.presentation_bridge import rasterise_ellipse
+                        mask = rasterise_ellipse(
+                            doc.image.width, doc.image.height,
+                            ix1 + bw // 2, iy1 + bh // 2, bw // 2, bh // 2,
+                        )
+                        mask_bid = store.allocate(mask)
+                        sel = self._controller.make_selection(
+                            x=ix1, y=iy1, width=bw, height=bh,
+                            kind="ellipse", mask_buffer_id=mask_bid,
+                        )
+                        if hasattr(self._controller, "set_selection"):
+                            self._controller.set_selection(sel)  # type: ignore[attr-defined]
+                        self.statusBar().showMessage(f"Ellipse selection: {bw}×{bh}")
+                    except Exception as exc:
+                        self.statusBar().showMessage(f"Ellipse selection error: {exc}", 3000)
+                self._selection_origin = None
+
+    def _lasso_event(self, event_type: str, event: object) -> None:
+        """Freehand lasso: accumulate mouse-move points → rasterise on release."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+
+        if not isinstance(event, QMouseEvent):
+            return
+        pos = event.position().toPoint()
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            self._lasso_points: list[tuple[int, int]] = []
+            self._selection_origin = pos
+        elif event_type == "move" and self._selection_origin is not None:
+            doc = self._controller.document
+            if doc is not None:
+                ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+                if not hasattr(self, "_lasso_points"):
+                    self._lasso_points = []
+                self._lasso_points.append((ix, iy))
+        elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
+            if self._selection_origin is not None:
+                doc = self._controller.document
+                store = self._controller.data_store
+                pts = getattr(self, "_lasso_points", [])
+                if doc is not None and store is not None and len(pts) >= 3:
+                    try:
+                        from dip_studio.application.presentation_bridge import rasterise_lasso
+                        mask = rasterise_lasso(doc.image.width, doc.image.height, pts)
+                        mask_bid = store.allocate(mask)
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        x1, y1 = min(xs), min(ys)
+                        bw = max(1, max(xs) - x1)
+                        bh = max(1, max(ys) - y1)
+                        sel = self._controller.make_selection(
+                            x=x1, y=y1, width=bw, height=bh,
+                            kind="lasso", mask_buffer_id=mask_bid,
+                        )
+                        if hasattr(self._controller, "set_selection"):
+                            self._controller.set_selection(sel)  # type: ignore[attr-defined]
+                        self.statusBar().showMessage(f"Lasso selection: {len(pts)} points")
+                    except Exception as exc:
+                        self.statusBar().showMessage(f"Lasso error: {exc}", 3000)
+                self._selection_origin = None
+                self._lasso_points = []
+
+    def _polygon_event(self, event_type: str, event: object) -> None:
+        """Click-by-click polygon: each left-click adds a vertex; double-click closes.
+
+        The polygon is rasterised and committed when the user double-clicks.
+        """
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+
+        if not isinstance(event, QMouseEvent):
+            return
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            doc = self._controller.document
+            if doc is None:
+                return
+            pos = event.position().toPoint()
+            ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+            if not hasattr(self, "_poly_points"):
+                self._poly_points: list[tuple[int, int]] = []
+            self._poly_points.append((ix, iy))
+            self.statusBar().showMessage(f"Polygon: {len(self._poly_points)} vertices (double-click to close)")
+        elif event_type == "double_click":
+            pts = getattr(self, "_poly_points", [])
+            doc = self._controller.document
+            store = self._controller.data_store
+            if doc is not None and store is not None and len(pts) >= 3:
+                try:
+                    from dip_studio.application.presentation_bridge import rasterise_polygon
+                    mask = rasterise_polygon(doc.image.width, doc.image.height, pts)
+                    mask_bid = store.allocate(mask)
+                    xs = [p[0] for p in pts]
+                    ys = [p[1] for p in pts]
+                    x1, y1 = min(xs), min(ys)
+                    bw = max(1, max(xs) - x1)
+                    bh = max(1, max(ys) - y1)
+                    sel = self._controller.make_selection(
+                        x=x1, y=y1, width=bw, height=bh,
+                        kind="polygon", mask_buffer_id=mask_bid,
+                    )
+                    if hasattr(self._controller, "set_selection"):
+                        self._controller.set_selection(sel)  # type: ignore[attr-defined]
+                    self.statusBar().showMessage(f"Polygon selection closed: {len(pts)} vertices")
+                except Exception as exc:
+                    self.statusBar().showMessage(f"Polygon error: {exc}", 3000)
+            self._poly_points = []
 
     def _tool_eyedropper_event(self, event_type: str, event: object) -> None:
         """Eyedropper: click to sample pixel color at cursor position."""
@@ -859,6 +1217,151 @@ class MainWindow(QMainWindow):
             return
         if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
             self._show_histogram()
+
+    # ------------------------------------------------------------------
+    # Paint tool event handlers (Phase 5)
+    # ------------------------------------------------------------------
+
+    def _tool_paint_event(self, event_type: str, event: object) -> None:
+        """Brush / Pencil tools: accumulate stroke points and paint on release."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+        if not isinstance(event, QMouseEvent):
+            return
+        doc = self._controller.document
+        if doc is None:
+            return
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            self._stroke_points: list[tuple[int, int]] = []
+            pos = event.position().toPoint()
+            ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+            self._stroke_points.append((ix, iy))
+        elif event_type == "move" and event.buttons() & Qt.MouseButton.LeftButton:
+            if not hasattr(self, "_stroke_points"):
+                self._stroke_points = []
+            pos = event.position().toPoint()
+            ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+            self._stroke_points.append((ix, iy))
+            # Live paint every few points to keep preview responsive.
+            if len(self._stroke_points) % 5 == 0:
+                self._flush_paint_stroke(commit=False)
+        elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
+            if hasattr(self, "_stroke_points") and self._stroke_points:
+                self._flush_paint_stroke(commit=True)
+                self._stroke_points = []
+
+    def _flush_paint_stroke(self, *, commit: bool) -> None:
+        """Call controller.paint_stroke() and refresh the canvas."""
+        points = getattr(self, "_stroke_points", [])
+        if not points:
+            return
+        # Brush colour: use foreground colour from sidebar if available.
+        color = (0, 0, 0, 255)  # black default
+        try:
+            color = self._sidebar.foreground_color_rgba  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
+        result = self._controller.paint_stroke(points, color, size=20, hardness=0.8, opacity=1.0)
+        if result is not None and commit:
+            self._show_document(result, "")
+
+    def _tool_eraser_event(self, event_type: str, event: object) -> None:
+        """Eraser tool: reduce alpha of active layer along stroke path."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+        if not isinstance(event, QMouseEvent):
+            return
+        doc = self._controller.document
+        if doc is None:
+            return
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            self._erase_points: list[tuple[int, int]] = []
+            pos = event.position().toPoint()
+            ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+            self._erase_points.append((ix, iy))
+        elif event_type == "move" and event.buttons() & Qt.MouseButton.LeftButton:
+            if not hasattr(self, "_erase_points"):
+                self._erase_points = []
+            pos = event.position().toPoint()
+            ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+            self._erase_points.append((ix, iy))
+        elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
+            points = getattr(self, "_erase_points", [])
+            if points:
+                result = self._controller.eraser_stroke(points, size=30, hardness=0.9, opacity=1.0)
+                if result is not None:
+                    self._show_document(result, "")
+            self._erase_points = []
+
+    def _tool_fill_event(self, event_type: str, event: object) -> None:
+        """Fill tool: BFS flood-fill at clicked pixel."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+        if not isinstance(event, QMouseEvent):
+            return
+        doc = self._controller.document
+        if doc is None:
+            return
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+            color = (0, 0, 0, 255)
+            try:
+                color = self._sidebar.foreground_color_rgba  # type: ignore[attr-defined]
+            except AttributeError:
+                pass
+            result = self._controller.flood_fill(ix, iy, color, tolerance=15)
+            if result is not None:
+                self._show_document(result, "Flood fill")
+
+    def _tool_text_event(self, event_type: str, event: object) -> None:
+        """Text tool: left-click opens TextLayerDialog to create / insert a text layer."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+        if not isinstance(event, QMouseEvent):
+            return
+        if event_type != "press" or event.button() != Qt.MouseButton.LeftButton:
+            return
+        self._show_text_layer_dialog(existing_layer=None)
+
+    def _show_text_layer_dialog(self, existing_layer: object = None) -> None:
+        """Open the TextLayerDialog and execute AddTextLayer on confirmation."""
+        try:
+            from dip_studio.presentation.text_layer_dialog import TextLayerDialog
+        except ImportError:
+            self.statusBar().showMessage("TextLayerDialog unavailable", 2000)
+            return
+
+        dlg = TextLayerDialog(
+            existing_layer=existing_layer if existing_layer is not None else None,
+            parent=self,
+        )
+
+        def _on_confirmed(text_layer: object) -> None:
+            try:
+                from dip_studio.application.text_commands import AddTextLayer, EditTextLayer
+                store = self._controller.data_store
+                if store is None:
+                    self.statusBar().showMessage("No active document", 2000)
+                    return
+                if existing_layer is None:
+                    cmd = AddTextLayer(store, text_layer)  # type: ignore[arg-type]
+                else:
+                    cmd = EditTextLayer(store, existing_layer.id, text_layer)  # type: ignore[arg-type]
+                result = self._controller.execute_command(cmd)
+                if result is not None:
+                    self._show_document(result, cmd.label)
+                else:
+                    # execute_command may return None; refresh anyway.
+                    doc = self._controller.document
+                    if doc is not None:
+                        self._show_document(doc, cmd.label)
+            except Exception as exc:
+                self.statusBar().showMessage(f"Text layer error: {exc}", 3000)
+
+        dlg.textLayerConfirmed.connect(_on_confirmed)
+        dlg.exec()
+
 
     def _switch_document(self, document_id: object) -> None:
         try:
@@ -1049,8 +1552,13 @@ class MainWindow(QMainWindow):
             self._canvas.set_selection_rect(None)
             self._show_document(document, label)
             self._canvas.fit_to_view()
+            if self._active_tool_id == "crop":
+                self._canvas.set_crop_mode(True)
+                rect_content = self._selected_layer_content_rect(document)
+                self._canvas.set_crop_rect_from_image(
+                    *rect_content, document.image.width, document.image.height
+                )
             self._refresh_preview()
-            self._canvas.set_crop_mode(True)
             self.statusBar().showMessage(label, 3000)
         except Exception as exc:
             QMessageBox.critical(self, "Crop Failed", str(exc))
@@ -1124,6 +1632,7 @@ class MainWindow(QMainWindow):
         tool = self._selected_tool()
         if tool is not None:
             try:
+                self._controller.validate_tool_parameters(tool.id, values)
                 preview_data = self._controller.preview_processing(tool.id, values)
                 if preview_data:
                     self._canvas.show_preview(preview_data)
@@ -1134,6 +1643,11 @@ class MainWindow(QMainWindow):
     def _apply_parameters(self, values: dict[str, object]) -> None:
         tool = self._selected_tool()
         if tool is not None:
+            try:
+                self._controller.validate_tool_parameters(tool.id, values)
+            except ValueError as error:
+                QMessageBox.warning(self, "Invalid parameters", str(error))
+                return
             if tool.id == "crop":
                 x = int(float(values.get("X", values.get("x", 0))))
                 y = int(float(values.get("Y", values.get("y", 0))))
@@ -1149,19 +1663,57 @@ class MainWindow(QMainWindow):
                     self._sidebar.add_history(label)
                     self._show_document(document, label)
                     self._canvas.fit_to_view()
+                    if self._active_tool_id == "crop":
+                        self._canvas.set_crop_mode(True)
+                        rect_content = self._selected_layer_content_rect(document)
+                        self._canvas.set_crop_rect_from_image(
+                            *rect_content, document.image.width, document.image.height
+                        )
                     self._refresh_preview()
-                    self._canvas.set_crop_mode(True)
                     self.statusBar().showMessage(label, 3000)
                 except Exception as error:
                     QMessageBox.critical(self, "Crop failed", str(error))
                 return
             try:
-                document = self._controller.apply_processing(tool.id, values)
-                self._sidebar.add_history(f"Applied parameters: {tool.name}")
-                self._show_document(document, f"Applied {tool.name}")
-                self._refresh_preview()
+                if self._processing_token is not None:
+                    self._processing_token.cancel()
+                self.statusBar().showMessage(f"Applying {tool.name}…")
+                self._processing_token = self._controller.apply_processing_async(
+                    tool.id,
+                    values,
+                    self._processing_worker.submit,
+                    on_done=lambda document: self._on_async_processing_done(
+                        document, tool.name
+                    ),
+                    on_error=lambda error: self._on_async_processing_error(error),
+                    on_stale=lambda: self._on_async_processing_stale(tool.name),
+                    on_progress=lambda percent: self.statusBar().showMessage(
+                        f"Applying {tool.name}: {percent}%"
+                    ),
+                )
             except (KeyError, ValueError, RuntimeError) as error:
                 QMessageBox.critical(self, "Apply failed", str(error))
+
+    def _on_async_processing_done(self, document: DocumentView, tool_name: str) -> None:
+        self._processing_token = None
+        self._sidebar.add_history(f"Applied parameters: {tool_name}")
+        self._show_document(document, f"Applied {tool_name}")
+        self._refresh_preview()
+        self.statusBar().showMessage(f"Applied {tool_name}", 3000)
+
+    def _on_async_processing_error(self, error: Exception) -> None:
+        self._processing_token = None
+        if isinstance(error, CancellationError):
+            self.statusBar().showMessage("Processing cancelled", 3000)
+            return
+        QMessageBox.critical(self, "Apply failed", str(error))
+
+    def _on_async_processing_stale(self, tool_name: str) -> None:
+        self._processing_token = None
+        self.statusBar().showMessage(
+            f"Discarded stale {tool_name} result; the document changed.",
+            5000,
+        )
 
     def _cancel_parameters(self) -> None:
         tool = self._selected_tool()
@@ -1182,6 +1734,13 @@ class MainWindow(QMainWindow):
         try:
             document = self._controller.undo()
             self._show_document(document, "Undo")
+            self._canvas.fit_to_view()
+            if self._active_tool_id == "crop":
+                self._canvas.set_crop_mode(True)
+                rect = self._selected_layer_content_rect(document)
+                self._canvas.set_crop_rect_from_image(
+                    *rect, document.image.width, document.image.height
+                )
         except RuntimeError as error:
             QMessageBox.information(self, "Undo", str(error))
 
@@ -1189,6 +1748,13 @@ class MainWindow(QMainWindow):
         try:
             document = self._controller.redo()
             self._show_document(document, "Redo")
+            self._canvas.fit_to_view()
+            if self._active_tool_id == "crop":
+                self._canvas.set_crop_mode(True)
+                rect = self._selected_layer_content_rect(document)
+                self._canvas.set_crop_rect_from_image(
+                    *rect, document.image.width, document.image.height
+                )
         except RuntimeError as error:
             QMessageBox.information(self, "Redo", str(error))
 
@@ -1199,6 +1765,13 @@ class MainWindow(QMainWindow):
         try:
             document = self._controller.history_jump_to(row)
             self._show_document(document, f"History jump to state {row}")
+            self._canvas.fit_to_view()
+            if self._active_tool_id == "crop":
+                self._canvas.set_crop_mode(True)
+                rect = self._selected_layer_content_rect(document)
+                self._canvas.set_crop_rect_from_image(
+                    *rect, document.image.width, document.image.height
+                )
             self._refresh_preview()
         except Exception as exc:
             self.statusBar().showMessage(f"History jump error: {exc}", 2000)
@@ -1214,7 +1787,6 @@ class MainWindow(QMainWindow):
             return
         try:
             import numpy as np
-            from dip_studio.rendering.compositor import _encode_jpeg
 
             arr = store.get(layer.buffer_id)
             if row == 0:  # Composite RGB
@@ -1228,12 +1800,12 @@ class MainWindow(QMainWindow):
             else:
                 return
             ch3 = np.stack([single_ch, single_ch, single_ch], axis=-1)
-            self._canvas.show_preview(_encode_jpeg(ch3))
+            self._canvas.set_preview_array(ch3)
             ch_names = ["RGB", "Red", "Green", "Blue", "Alpha"]
             name = ch_names[row] if row < len(ch_names) else f"Channel {row}"
             self.statusBar().showMessage(f"Viewing channel: {name}", 2000)
-        except Exception:
-            pass
+        except (KeyError, RuntimeError, ValueError) as error:
+            self.statusBar().showMessage(f"Preview failed: {error}", 4000)
 
     def _open_project(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
@@ -1310,20 +1882,43 @@ class MainWindow(QMainWindow):
             current_idx = self._controller.history_current_index()
             self._sidebar.set_history_states(labels, current_idx)
 
-        settings = self._settings()
-        selected_id = settings.value("selectedLayerId", "")
-        if selected_id:
-            self._sidebar.select_layer(str(selected_id))
-        preview = self._controller.preview(document.image.width, document.image.height)
-        self._canvas.show_preview(preview)
+        # ── Fast direct-array rendering path (no JPEG/PNG encoding overhead) ──
+        raw_arr = None
+        renderer = getattr(self._controller, "_renderer", None)
+        if renderer is not None and hasattr(renderer, "render_raw"):
+            from dip_studio.rendering.ports import RenderRequest
+            try:
+                raw_arr = renderer.render_raw(
+                    RenderRequest(str(document.id), document.image.width, document.image.height)
+                )
+            except Exception as exc:
+                self.statusBar().showMessage(f"Preview render failed: {exc}", 3000)
+                raw_arr = None
+
+        if raw_arr is not None:
+            self._canvas.set_preview_array(raw_arr)
+        else:
+            try:
+                preview = self._controller.preview(document.image.width, document.image.height)
+                self._canvas.show_preview(preview)
+            except Exception as exc:
+                self.statusBar().showMessage(f"Preview render failed: {exc}", 3000)
+                self._canvas.clear_preview()
+            raw_arr = None  # used below for navigator only
+
         if self._active_tool_id == "crop":
             self._canvas.set_crop_mode(True)
             rect = self._selected_layer_content_rect(document)
             self._canvas.set_crop_rect_from_image(
                 *rect, document.image.width, document.image.height
             )
-        if hasattr(self._sidebar, 'update_navigator'):
-            self._sidebar.update_navigator(preview, self._canvas.zoom)
+        if hasattr(self._sidebar, "update_navigator"):
+            # Navigator uses the byte preview; compute lazily only when needed.
+            try:
+                preview_bytes = self._controller.preview(document.image.width, document.image.height)
+                self._sidebar.update_navigator(preview_bytes, self._canvas.zoom)
+            except Exception as exc:
+                self.statusBar().showMessage(f"Navigator preview failed: {exc}", 3000)
         self.statusBar().showMessage(
             f"{document.name} — {document.image.width} × {document.image.height} — "
             f"{self._canvas.zoom:.0%}"
@@ -1358,33 +1953,73 @@ class MainWindow(QMainWindow):
         return message.clickedButton() is discard
 
     def _show_command_palette(self) -> None:
+        palette_handlers = {
+            "file.new": self._show_new_project,
+            "file.open_project": self._open_project,
+            "file.open_image": self._open_image,
+            "file.save": self._save_project,
+            "edit.undo": self._undo,
+            "edit.redo": self._redo,
+            "layer.add": self._add_layer,
+            "layer.duplicate": self._duplicate_selected_layer,
+            "layer.remove": self._remove_selected_layers,
+            "layer.move_up": lambda: self._move_selected_layer(-1),
+            "layer.move_down": lambda: self._move_selected_layer(1),
+            "layer.toggle_visibility": self._toggle_selected_visibility,
+            "layer.rename": self._rename_selected_layer,
+            "layer.copy": self._copy_selected_layers,
+            "layer.paste": self._paste_layers,
+            "view.theme": self._toggle_theme,
+            "canvas.zoom_in": self._zoom_in,
+            "canvas.zoom_out": self._zoom_out,
+            "canvas.fit": self._fit_canvas,
+            "canvas.actual_size": self._actual_size,
+            "canvas.grid": lambda: self._grid_action.trigger(),
+            "canvas.before_after": lambda: self._before_after_action.trigger(),
+        }
+        for command_id, handler in palette_handlers.items():
+            self._register_ui_command(command_id, handler)
         commands = (
-            ("New project", self._show_new_project),
-            ("Open project", self._open_project),
-            ("Open image", self._open_image),
-            ("Save project", self._save_project),
+            ("New project", lambda: self._dispatch_ui_command("file.new")),
+            ("Open project", lambda: self._dispatch_ui_command("file.open_project")),
+            ("Open image", lambda: self._dispatch_ui_command("file.open_image")),
+            ("Save project", lambda: self._dispatch_ui_command("file.save")),
             ("Keyboard shortcuts", self._show_shortcut_editor),
-            ("Undo", self._undo),
-            ("Redo", self._redo),
-            ("Add layer", self._add_layer),
-            ("Duplicate selected layer", self._duplicate_selected_layer),
-            ("Remove selected layers", self._remove_selected_layers),
-            ("Move selected layer up", lambda: self._move_selected_layer(-1)),
-            ("Move selected layer down", lambda: self._move_selected_layer(1)),
-            ("Toggle selected layer visibility", self._toggle_selected_visibility),
-            ("Rename selected layer", self._rename_selected_layer),
-            ("Copy selected layers", self._copy_selected_layers),
-            ("Paste layers", self._paste_layers),
-            ("Toggle theme", self._toggle_theme),
-            ("Zoom in", self._zoom_in),
-            ("Zoom out", self._zoom_out),
-            ("Fit canvas", self._fit_canvas),
-            ("Actual size", self._actual_size),
-            ("Toggle grid", lambda: self._grid_action.trigger()),
-            ("Toggle before/after", lambda: self._before_after_action.trigger()),
+            ("Undo", lambda: self._dispatch_ui_command("edit.undo")),
+            ("Redo", lambda: self._dispatch_ui_command("edit.redo")),
+            ("Add layer", lambda: self._dispatch_ui_command("layer.add")),
+            ("Duplicate selected layer", lambda: self._dispatch_ui_command("layer.duplicate")),
+            ("Remove selected layers", lambda: self._dispatch_ui_command("layer.remove")),
+            ("Move selected layer up", lambda: self._dispatch_ui_command("layer.move_up")),
+            ("Move selected layer down", lambda: self._dispatch_ui_command("layer.move_down")),
+            ("Toggle selected layer visibility", lambda: self._dispatch_ui_command("layer.toggle_visibility")),
+            ("Rename selected layer", lambda: self._dispatch_ui_command("layer.rename")),
+            ("Copy selected layers", lambda: self._dispatch_ui_command("layer.copy")),
+            ("Paste layers", lambda: self._dispatch_ui_command("layer.paste")),
+            ("Toggle theme", lambda: self._dispatch_ui_command("view.theme")),
+            ("Zoom in", lambda: self._dispatch_ui_command("canvas.zoom_in")),
+            ("Zoom out", lambda: self._dispatch_ui_command("canvas.zoom_out")),
+            ("Fit canvas", lambda: self._dispatch_ui_command("canvas.fit")),
+            ("Actual size", lambda: self._dispatch_ui_command("canvas.actual_size")),
+            ("Toggle grid", lambda: self._dispatch_ui_command("canvas.grid")),
+            ("Toggle before/after", lambda: self._dispatch_ui_command("canvas.before_after")),
         ) + tuple(
-            (f"Tool: {tool.name}", lambda value=tool.id: self._select_tool(value))
+            (
+                f"Tool: {tool.name}",
+                lambda tool_id=tool.id: self._dispatch_ui_command(f"tool.{tool_id}"),
+            )
             for tool in self._controller.tools
+        ) + tuple(
+            (
+                f"Process: {tool.name}",
+                self._processing_action(
+                    tool.id,
+                    {},
+                    dialog=bool(tool.parameters),
+                ),
+            )
+            for tool in self._controller.tools
+            if tool.category in {"Filter", "Analysis"} and tool.id
         )
         CommandPaletteDialog(commands, self).exec()
 
@@ -1526,28 +2161,39 @@ class MainWindow(QMainWindow):
         settings = self._settings()
         geometry = settings.value("geometry", QByteArray())
         state = settings.value("windowState", QByteArray())
-        if isinstance(geometry, QByteArray):
-            self.restoreGeometry(geometry)
-        if isinstance(state, QByteArray):
-            self.restoreState(state)
+        restored = True
+        if isinstance(geometry, QByteArray) and not geometry.isEmpty():
+            restored = self.restoreGeometry(geometry) and restored
+        if isinstance(state, QByteArray) and not state.isEmpty():
+            restored = self.restoreState(state) and restored
+        if not restored:
+            self._reset_workspace(save=False)
+            self.statusBar().showMessage(
+                "Saved workspace was invalid; default layout restored", 5000
+            )
         panel = settings.value("workspacePanel", 0, type=int)
         if 0 <= panel < self._sidebar.tabs.count():
             self._sidebar.tabs.setCurrentIndex(panel)
 
-    def _reset_workspace(self) -> None:
+    def _reset_workspace(self, *, save: bool = True) -> None:
         self.resize(1200, 760)
         self._workspace_dock.show()
         self._workspace_action.setChecked(True)
         self._sidebar.tabs.setCurrentIndex(0)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._tools_dock)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._workspace_dock)
+        if save:
+            self._save_workspace()
         self.statusBar().showMessage("Workspace reset")
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self._confirm_document_transition():
             event.ignore()
             return
+        self._processing_worker.cancel_all()
+        self._processing_worker.wait_for_done()
         self._save_shortcut_overrides()
+        self._save_workspace()
         self._save_workspace()
         event.accept()
 
@@ -1745,8 +2391,9 @@ class MainWindow(QMainWindow):
             self._canvas.show_preview(preview)
             if hasattr(self._sidebar, 'update_navigator'):
                 self._sidebar.update_navigator(preview, self._canvas.zoom)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.statusBar().showMessage(f"Preview render failed: {exc}", 3000)
+            self._canvas.clear_preview()
 
     def _show_histogram(self) -> None:
         """Show the pixel intensity histogram for the active layer."""

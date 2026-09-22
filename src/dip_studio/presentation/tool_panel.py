@@ -53,7 +53,15 @@ class ToolPanel(QWidget):
         layout.setVerticalSpacing(4)
 
         row = 0
-        for group_name, tool_ids in self._GROUPS:
+        grouped_ids = {tool_id for _, tool_ids in self._GROUPS for tool_id in tool_ids}
+        groups = list(self._GROUPS)
+        ungrouped_tools = tuple(
+            tool for tool in tools if tool.id not in grouped_ids
+        )
+        if ungrouped_tools:
+            groups.append(("Plugins", tuple(tool.id for tool in ungrouped_tools)))
+
+        for group_name, tool_ids in groups:
             group_tools = tuple(
                 self._tools_by_id[tool_id]
                 for tool_id in tool_ids
