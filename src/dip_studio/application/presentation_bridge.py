@@ -56,3 +56,14 @@ def rasterise_polygon(width: int, height: int, points: list[tuple[int, int]]):
 def rasterise_color_selection(arr: object, seed_x: int, seed_y: int, tolerance: int = 15):
     from dip_studio.infrastructure.selection_geometry import rasterise_color_selection as rasterise
     return rasterise(arr, seed_x, seed_y, tolerance)
+
+
+def is_group_layer(layer: object) -> bool:
+    from dip_studio.domain.model import GroupLayer
+    return isinstance(layer, GroupLayer)
+
+
+def parse_doc_directory(docs_dir: object) -> tuple[object, ...]:
+    from pathlib import Path
+    from dip_studio.infrastructure.doc_parser import DocParser
+    return DocParser.parse_directory(Path(str(docs_dir)))

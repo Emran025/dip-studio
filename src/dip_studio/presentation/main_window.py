@@ -559,6 +559,10 @@ class MainWindow(QMainWindow):
         )
 
         help_menu = self.menuBar().addMenu("Help")
+        guide_action = help_menu.addAction("User Guide...")
+        guide_action.setShortcut(QKeySequence("F1"))
+        guide_action.triggered.connect(self._show_user_guide)
+        help_menu.addSeparator()
         help_menu.addAction("About DIP Studio").triggered.connect(self._show_about)
 
     def _create_toolbar(self) -> None:
@@ -2686,6 +2690,15 @@ class MainWindow(QMainWindow):
             )
         except Exception as exc:
             QMessageBox.critical(self, "Place Error", str(exc))
+
+    def _show_user_guide(self) -> None:
+        """Open the interactive User Documentation Viewer dialog (F1)."""
+        try:
+            from dip_studio.presentation.doc_viewer import DocViewerDialog
+            dlg = DocViewerDialog(parent=self)
+            dlg.exec()
+        except Exception as exc:
+            QMessageBox.critical(self, "User Guide Error", str(exc))
 
     def _show_about(self) -> None:
         from PySide6.QtWidgets import QMessageBox
