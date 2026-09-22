@@ -11,6 +11,18 @@ from dip_studio.core.errors import PersistenceError
 from dip_studio.domain.model import ImageSpec
 from dip_studio.infrastructure.data_store import ImageDataStore
 
+SUPPORTED_IMPORT_FORMATS = (
+    ("ppm", "PPM"),
+    ("png", "PNG"),
+    ("jpg", "JPEG"),
+    ("jpeg", "JPEG"),
+    ("bmp", "BMP"),
+    ("tiff", "TIFF"),
+    ("tif", "TIFF"),
+    ("webp", "WebP"),
+    ("gif", "GIF"),
+)
+
 _PILLOW_AVAILABLE = False
 try:
     import importlib.util
@@ -75,8 +87,9 @@ class PillowImageImporter:
                 "Pillow is not installed. Install it with: pip install Pillow"
             )
         try:
-            from PIL import Image as PilImage  # type: ignore[import-untyped]
+            from PIL import Image as PilImage, ImageOps  # type: ignore[import-untyped]
             img = PilImage.open(path)
+            img = ImageOps.exif_transpose(img)
             # Convert to RGBA for uniform 4-channel handling
             mode = img.mode
             has_alpha = mode in ("RGBA", "LA", "PA")
@@ -119,15 +132,25 @@ class ImageFormatRegistry:
         importers: tuple[ImageImporter, ...] | None = None,
         data_store: ImageDataStore | None = None,
     ) -> None:
+        self._data_store = data_store or ImageDataStore()
         if importers is None:
-            store = data_store or ImageDataStore()
-            importers = _default_importers(store)
+            importers = _default_importers(self._data_store)
         self._importers = {
             ext.lower(): importer
             for importer in importers
             for ext in importer.extensions
         }
+        self.set_data_store(self._data_store)
+
+    def set_data_store(self, data_store: ImageDataStore) -> None:
         self._data_store = data_store
+        for importer in self._importers.values():
+            if hasattr(importer, "_store"):
+                importer._store = data_store
+
+    @property
+    def supported_formats(self) -> tuple[tuple[str, str], ...]:
+        return SUPPORTED_IMPORT_FORMATS
 
     def importer_for(self, path: Path) -> ImageImporter:
         importer = self._importers.get(path.suffix.lower())
