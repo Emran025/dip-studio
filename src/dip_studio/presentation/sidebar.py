@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 
 from dip_studio.presentation.dialogs import ToolParametersPanel
 from dip_studio.presentation.panel_group import PanelGroup
+from dip_studio.application.presentation_bridge import is_group_layer
 from dip_studio.presentation.vector_icons import icon_for
-from dip_studio.domain.model import GroupLayer
 
 
 class LayerTreeWidget(QTreeWidget):
@@ -209,8 +209,8 @@ class RightSidebar(QWidget):
         child_ids = {
             child_id
             for layer in layers
-            if isinstance(layer, GroupLayer)
-            for child_id in layer.children
+            if is_group_layer(layer)
+            for child_id in getattr(layer, "children", ())
         }
 
         def add_item(layer: object, parent: QTreeWidgetItem | None = None) -> None:
@@ -235,11 +235,11 @@ class RightSidebar(QWidget):
             if str(layer.id) in selected_keys:
                 item.setSelected(True)
                 self.layers.setCurrentItem(item)
-            if isinstance(layer, GroupLayer):
+            if is_group_layer(layer):
                 item.setChildIndicatorPolicy(
                     QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
                 )
-                for child_id in layer.children:
+                for child_id in getattr(layer, "children", ()):
                     child = by_id.get(child_id)
                     if child is not None:
                         add_item(child, item)
