@@ -1,6 +1,7 @@
 """Discoverable tool definitions owned by the application layer."""
 
 from dataclasses import dataclass
+from collections.abc import Callable, Mapping
 from typing import Protocol
 
 
@@ -13,6 +14,18 @@ class ToolParameter:
     minimum: float = 0
     maximum: float = 100
     choices: tuple[str, ...] = ()
+    step: float | None = None
+    description: str = ""
+    validation: Callable[[object], bool] | None = None
+
+    def validate(self, value: object) -> bool:
+        """Validate a value against the declared schema without coercing it."""
+        if self.choices and value not in self.choices:
+            return False
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if value < self.minimum or value > self.maximum:
+                return False
+        return self.validation(value) if self.validation is not None else True
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,11 +36,14 @@ class ToolDefinition:
     description: str
     shortcut: str | None = None
     parameters: tuple[ToolParameter, ...] = ()
+    capabilities: tuple[str, ...] = ()
 
 
 class ToolRegistry(Protocol):
     def list(self) -> tuple[ToolDefinition, ...]: ...
     def get(self, tool_id: str) -> ToolDefinition: ...
+
+    def validate_parameters(self, tool_id: str, values: Mapping[str, object]) -> None: ...
 
 
 class InMemoryToolRegistry:
@@ -46,6 +62,20 @@ class InMemoryToolRegistry:
             return self._tools[tool_id]
         except KeyError as error:
             raise KeyError(f"Unknown tool: {tool_id}") from error
+
+    def validate_parameters(self, tool_id: str, values: Mapping[str, object]) -> None:
+        tool = self.get(tool_id)
+        parameters = {parameter.id: parameter for parameter in tool.parameters}
+        unknown = set(values) - set(parameters)
+        if unknown:
+            raise ValueError(f"Unknown parameters for {tool_id}: {sorted(unknown)}")
+        invalid = [
+            parameter.id
+            for parameter in tool.parameters
+            if parameter.id in values and not parameter.validate(values[parameter.id])
+        ]
+        if invalid:
+            raise ValueError(f"Invalid parameters for {tool_id}: {', '.join(invalid)}")
 
 
 def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
