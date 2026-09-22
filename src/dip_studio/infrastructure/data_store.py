@@ -223,6 +223,7 @@ class ImageDataStore:
         doc_w: int,
         doc_h: int,
         cut: bool = False,
+        mask_buffer_id: str | None = None,
     ) -> tuple[str, str | None]:
         """Extract rectangular region from buffer.
 
@@ -249,14 +250,28 @@ class ImageDataStore:
         sx2 = max(sx1 + 1, min(sw, int(round(x2 * scale_x))))
         sy2 = max(sy1 + 1, min(sh, int(round(y2 * scale_y))))
 
+        selected = np.zeros((sh, sw), dtype=np.uint8)
+        selected[sy1:sy2, sx1:sx2] = 255
+        if mask_buffer_id is not None and self.has(mask_buffer_id):
+            mask = np.asarray(self.get(mask_buffer_id))
+            if mask.ndim == 3:
+                mask = mask[:, :, 0]
+            mask = np.asarray(mask, dtype=np.uint8)
+            if mask.shape[:2] == (sh, sw):
+                selected = np.minimum(selected, mask)
+
         new_arr = np.zeros((sh, sw, 4), dtype=np.uint8)
-        new_arr[sy1:sy2, sx1:sx2] = src_arr[sy1:sy2, sx1:sx2].copy()
+        region = src_arr.copy()
+        region[:, :, 3] = (
+            region[:, :, 3].astype(np.uint16) * selected.astype(np.uint16) // 255
+        ).astype(np.uint8)
+        new_arr[sy1:sy2, sx1:sx2] = region[sy1:sy2, sx1:sx2]
         new_buf_id = self.allocate(new_arr)
 
         cut_buf_id = None
         if cut:
             cut_arr = src_arr.copy()
-            cut_arr[sy1:sy2, sx1:sx2] = 0
+            cut_arr[sy1:sy2, sx1:sx2][selected[sy1:sy2, sx1:sx2] > 0] = 0
             cut_buf_id = self.allocate(cut_arr)
 
         return new_buf_id, cut_buf_id

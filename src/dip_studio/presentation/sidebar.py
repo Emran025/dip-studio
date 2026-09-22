@@ -1,9 +1,10 @@
 """Photoshop-style right workspace sidebar with navigable panel tabs."""
 
-from PySide6.QtCore import QSignalBlocker, QTimer, QSize, Qt, Signal
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
@@ -154,8 +155,8 @@ class RightSidebar(QWidget):
                 self.layers.indexOfTopLevelItem(current)
             )
         )
+        self.layers.itemSelectionChanged.connect(self._selection_changed)
         self.layers.itemClicked.connect(self._item_clicked)
-        self.layers.itemChanged.connect(self._visibility_changed)
         self._layer_callback = None
 
         self.channels = QListWidget()
@@ -245,7 +246,9 @@ class RightSidebar(QWidget):
                 | Qt.ItemFlag.ItemIsEnabled
             )
             item.setCheckState(
-                Qt.CheckState.Checked if layer.visible else Qt.CheckState.Unchecked
+                Qt.CheckState.Checked
+                if str(layer.id) in selected_keys
+                else Qt.CheckState.Unchecked
             )
             if str(layer.id) in selected_keys:
                 item.setSelected(True)
@@ -295,12 +298,29 @@ class RightSidebar(QWidget):
         self._layer_callback = callback
 
     def _item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        if column == 1:
-            item.setCheckState(
-                Qt.CheckState.Unchecked
-                if item.checkState() == Qt.CheckState.Checked
-                else Qt.CheckState.Checked
+        if column == 0:
+            selected = item.checkState(0) == Qt.CheckState.Checked
+            modifiers = QApplication.keyboardModifiers()
+            if not modifiers & Qt.KeyboardModifier.ShiftModifier:
+                with QSignalBlocker(self.layers):
+                    self.layers.clearSelection()
+            item.setSelected(selected)
+            if selected:
+                self.layers.setCurrentItem(item)
+        elif column == 1:
+            layer_id = item.data(Qt.ItemDataRole.UserRole)
+            layer = next(
+                (candidate for candidate in self.layers_data if candidate.id == layer_id),
+                None,
             )
+            if layer is not None and self._layer_callback is not None:
+                self._layer_callback(
+                    (layer_id,),
+                    not getattr(layer, "visible", True),
+                    None,
+                    None,
+                    None,
+                )
         elif column == 2 and self._layer_callback is not None:
             layer_id = item.data(Qt.ItemDataRole.UserRole)
             layer = next(
@@ -377,8 +397,6 @@ class RightSidebar(QWidget):
         item = self.layers.currentItem()
         if item is not None:
             row = self.layers.indexOfTopLevelItem(item)
-            if item is not None:
-                self.layerSelectionChanged.emit(item.data(Qt.ItemDataRole.UserRole))
             self.layer_opacity.blockSignals(True)
             self.layer_blend_mode.blockSignals(True)
             self.layer_lock_button.blockSignals(True)
@@ -403,40 +421,46 @@ class RightSidebar(QWidget):
             self.layer_blend_mode.blockSignals(False)
             self.layer_opacity.blockSignals(False)
 
-    def _visibility_changed(self, item: QTreeWidgetItem) -> None:
-        # Capture all data before the callback refreshes the tree. The main
-        # window rebuilds the layer items after changing visibility, which
-        # invalidates this Qt object immediately.
-        layer_id = item.data(Qt.ItemDataRole.UserRole)
-        visible = item.checkState() == Qt.CheckState.Checked
+    def _selection_changed(self) -> None:
         selected = tuple(
-            selected_item.data(Qt.ItemDataRole.UserRole)
-            for selected_item in self.layers.selectedItems()
+            item.data(Qt.ItemDataRole.UserRole) for item in self.layers.selectedItems()
         )
-        # Changing an item's icon also emits ``itemChanged`` in Qt. Block the
-        # tree signal while updating the presentation or this handler calls
-        # itself recursively until Python exhausts the stack.
         with QSignalBlocker(self.layers):
-            item.setIcon(
-                1,
-                icon_for("layer.visible" if visible else "layer.hidden"),
-            )
-        if self._layer_callback is not None:
-            callback = self._layer_callback
-            callback_ids = selected or (layer_id,)
-            # Let Qt finish delivering itemChanged before the main window
-            # rebuilds the tree; deleting the item during this signal causes
-            # native Qt access violations on some PySide6 versions.
-            QTimer.singleShot(
-                0,
-                lambda: callback(
-                    callback_ids,
-                    visible,
-                    None,
-                    None,
-                    None,
-                ),
-            )
+            selected_keys = {str(layer_id) for layer_id in selected}
+            iterator = QTreeWidgetItemIterator(self.layers)
+            while iterator.value() is not None:
+                item = iterator.value()
+                item.setCheckState(
+                    0,
+                    Qt.CheckState.Checked
+                    if str(item.data(Qt.ItemDataRole.UserRole)) in selected_keys
+                    else Qt.CheckState.Unchecked,
+                )
+                iterator += 1
+        self.layerSelectionChanged.emit(selected)
+
+    def set_selected_layers(self, layer_ids: tuple[object, ...]) -> None:
+        """Synchronize Tree selection and its selection markers."""
+        selected_keys = {str(layer_id) for layer_id in layer_ids}
+        with QSignalBlocker(self.layers):
+            self.layers.clearSelection()
+            iterator = QTreeWidgetItemIterator(self.layers)
+            first: QTreeWidgetItem | None = None
+            while iterator.value() is not None:
+                item = iterator.value()
+                selected = str(item.data(Qt.ItemDataRole.UserRole)) in selected_keys
+                item.setSelected(selected)
+                item.setCheckState(
+                    0,
+                    Qt.CheckState.Checked
+                    if selected
+                    else Qt.CheckState.Unchecked,
+                )
+                if selected and first is None:
+                    first = item
+                iterator += 1
+            if first is not None:
+                self.layers.setCurrentItem(first)
 
     def _opacity_changed(self, value: float) -> None:
         if self._layer_callback is not None and self.layers.currentRow() >= 0:
@@ -479,14 +503,11 @@ class RightSidebar(QWidget):
             item.data(Qt.ItemDataRole.UserRole) for item in self.layers.selectedItems()
         )
 
-    def select_layer(self, layer_id: object) -> None:
-        iterator = QTreeWidgetItemIterator(self.layers)
-        while iterator.value() is not None:
-            item = iterator.value()
-            if str(item.data(Qt.ItemDataRole.UserRole)) == str(layer_id):
-                self.layers.setCurrentItem(item)
-                return
-            iterator += 1
+    def select_layer(self, layer_id: object, *, additive: bool = False) -> None:
+        selected = list(self.selected_layer_ids()) if additive else []
+        if layer_id not in selected:
+            selected.append(layer_id)
+        self.set_selected_layers(tuple(selected))
 
     def add_history(self, label: str) -> None:
         self.history.addItem(label)

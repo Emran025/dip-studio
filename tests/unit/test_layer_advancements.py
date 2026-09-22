@@ -31,6 +31,56 @@ def _setup_controller() -> tuple[EditorController, ImageDataStore]:
 
 
 class TestLayerFromSelection:
+    def test_copy_paste_selection_keeps_content_and_creates_independent_layer(self) -> None:
+        controller, store = _setup_controller()
+        source = controller.document.layers[0]  # type: ignore[union-attr]
+
+        controller.copy_selection_to_clipboard(source.id, (2, 2, 5, 5))
+        pasted = controller.paste_layers()
+
+        pasted_layer = pasted.layers[-1]
+        assert pasted_layer.id != source.id
+        assert pasted_layer.buffer_id != source.buffer_id
+        assert pasted_layer.transform == source.transform
+        pasted_arr = store.get(pasted_layer.buffer_id)  # type: ignore[arg-type]
+        assert (pasted_arr[2:7, 2:7, 0] == 100).all()
+        assert (pasted_arr[:2, :, 3] == 0).all()
+
+    def test_cut_selection_stores_clipboard_and_clears_source_without_adding_layer(self) -> None:
+        controller, store = _setup_controller()
+        source = controller.document.layers[0]  # type: ignore[union-attr]
+
+        controller.copy_selection_to_clipboard(source.id, (2, 2, 5, 5), cut=True)
+        cut_doc = controller.document
+        assert cut_doc is not None
+        assert len(cut_doc.layers) == 1
+        source_arr = store.get(cut_doc.layers[0].buffer_id)  # type: ignore[arg-type]
+        assert (source_arr[2:7, 2:7] == 0).all()
+
+        pasted = controller.paste_layers()
+        assert len(pasted.layers) == 2
+        pasted_arr = store.get(pasted.layers[-1].buffer_id)  # type: ignore[arg-type]
+        assert (pasted_arr[2:7, 2:7, 0] == 100).all()
+
+    def test_masked_selection_does_not_copy_or_cut_the_bounding_box_background(self) -> None:
+        controller, store = _setup_controller()
+        source = controller.document.layers[0]  # type: ignore[union-attr]
+        mask = np.zeros((20, 20), dtype=np.uint8)
+        mask[4, 4] = 255
+        mask_id = store.allocate(mask)
+
+        controller.copy_selection_to_clipboard(
+            source.id, (2, 2, 5, 5), mask_buffer_id=mask_id, cut=True
+        )
+        pasted = controller.paste_layers()
+        pasted_arr = store.get(pasted.layers[-1].buffer_id)  # type: ignore[arg-type]
+        source_arr = store.get(pasted.layers[0].buffer_id)  # type: ignore[arg-type]
+
+        assert pasted_arr[4, 4, 3] == 255
+        assert pasted_arr[3, 3, 3] == 0
+        assert source_arr[4, 4, 3] == 0
+        assert source_arr[3, 3, 3] == 255
+
     def test_layer_via_copy(self) -> None:
         controller, store = _setup_controller()
         doc = controller.document

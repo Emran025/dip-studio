@@ -47,6 +47,7 @@ class CanvasView(QWidget):
         self._crop_handle: str | None = None
         self._crop_drag_origin: QPoint | None = None
         self._active_layer_rect: tuple[int, int, int, int, int, int] | None = None
+        self._active_layer_rects: tuple[tuple[int, int, int, int, int, int], ...] = ()
         self._active_layer_name: str = ""
         # Optional Python callback: callback(event_type, event)
         self._tool_callback: Callable[[str, QMouseEvent], None] | None = None
@@ -56,13 +57,29 @@ class CanvasView(QWidget):
     ) -> None:
         """Set the active layer's document-space bounding box for on-canvas highlighting."""
         self._active_layer_rect = (x, y, width, height, doc_w, doc_h)
+        self._active_layer_rects = (self._active_layer_rect,)
         self._active_layer_name = name
         self.update()
 
     def clear_active_layer_rect(self) -> None:
         """Clear active layer highlight overlay."""
         self._active_layer_rect = None
+        self._active_layer_rects = ()
         self._active_layer_name = ""
+        self.update()
+
+    def set_active_layer_rects(
+        self,
+        rects: tuple[tuple[int, int, int, int], ...],
+        doc_w: int,
+        doc_h: int,
+    ) -> None:
+        self._active_layer_rects = tuple(
+            (*rect, doc_w, doc_h) for rect in rects
+        )
+        self._active_layer_rect = (
+            self._active_layer_rects[0] if self._active_layer_rects else None
+        )
         self.update()
 
     def active_layer_handle_at(self, pos: QPoint) -> str | None:
@@ -532,7 +549,11 @@ class CanvasView(QWidget):
             event.accept()
             return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if self._selection_rect is not None and not self._selection_rect.isNull():
+            if (
+                self._is_crop_mode
+                and self._selection_rect is not None
+                and not self._selection_rect.isNull()
+            ):
                 self.cropCommitted.emit()
                 event.accept()
                 return
@@ -739,24 +760,33 @@ class CanvasView(QWidget):
                     painter.drawRect(self._selection_rect)
 
         if (
-            self._active_layer_rect is not None
+            self._active_layer_rects
             and not self._is_crop_mode
-            and (self._selection_rect is None or self._selection_rect.isNull())
         ):
-            lx, ly, lw, lh, doc_w, doc_h = self._active_layer_rect
-            scale_x = img_rect.width() / max(1, doc_w)
-            scale_y = img_rect.height() / max(1, doc_h)
-            rx = img_rect.left() + round(lx * scale_x)
-            ry = img_rect.top() + round(ly * scale_y)
-            rw = max(2, round(lw * scale_x))
-            rh = max(2, round(lh * scale_y))
-            l_rect = QRect(rx, ry, rw, rh)
-
             border_pen = QPen(QColor(0, 122, 255, 230), 1.5, Qt.PenStyle.SolidLine)
             painter.setPen(border_pen)
             painter.setBrush(QColor(0, 122, 255, 20))
-            painter.drawRect(l_rect)
+            for lx, ly, lw, lh, doc_w, doc_h in self._active_layer_rects:
+                scale_x = img_rect.width() / max(1, doc_w)
+                scale_y = img_rect.height() / max(1, doc_h)
+                l_rect = QRect(
+                    img_rect.left() + round(lx * scale_x),
+                    img_rect.top() + round(ly * scale_y),
+                    max(2, round(lw * scale_x)),
+                    max(2, round(lh * scale_y)),
+                )
+                painter.drawRect(l_rect)
 
+            # Resize handles belong to the primary selected layer only.
+            lx, ly, lw, lh, doc_w, doc_h = self._active_layer_rects[0]
+            scale_x = img_rect.width() / max(1, doc_w)
+            scale_y = img_rect.height() / max(1, doc_h)
+            l_rect = QRect(
+                img_rect.left() + round(lx * scale_x),
+                img_rect.top() + round(ly * scale_y),
+                max(2, round(lw * scale_x)),
+                max(2, round(lh * scale_y)),
+            )
             handle_size = 6
             h_half = handle_size // 2
             h_positions = [

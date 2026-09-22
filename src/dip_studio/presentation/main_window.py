@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         self._canvas = CanvasView()
         self._selection_origin: QPoint | None = None
         self._active_tool_id: str | None = None
+        self._selected_layer_ids_state: tuple[object, ...] = ()
         self._processing_worker = BackgroundWorker(self)
         self._processing_token = None
         self._ui_commands: dict[str, Callable[[], None]] = {}
@@ -109,7 +110,7 @@ class MainWindow(QMainWindow):
         self.resize(1200, 760)
         self.setCentralWidget(self._canvas)
         self._canvas.set_active_tool_callback(self._on_canvas_tool_event)
-        self._canvas.cropCommitted.connect(self._commit_crop_from_selection)
+        self._canvas.cropCommitted.connect(self._on_crop_committed)
         self._canvas.cropRectChanged.connect(self._on_crop_rect_changed)
         self._canvas.selectionCleared.connect(
             lambda: self.statusBar().showMessage("Selection cleared", 1500)
@@ -168,16 +169,6 @@ class MainWindow(QMainWindow):
         self._add_layer_action = QAction("Add layer", self)
         self._add_layer_action.setShortcut(QKeySequence(self._shortcut("layer.add")))
         self._add_layer_action.triggered.connect(self._add_layer)
-        self._layer_via_copy_action = QAction("New layer via copy", self)
-        self._layer_via_copy_action.setShortcut(QKeySequence("Ctrl+J"))
-        self._layer_via_copy_action.triggered.connect(
-            lambda: self._create_layer_from_selection(cut=False)
-        )
-        self._layer_via_cut_action = QAction("New layer via cut", self)
-        self._layer_via_cut_action.setShortcut(QKeySequence("Ctrl+Shift+J"))
-        self._layer_via_cut_action.triggered.connect(
-            lambda: self._create_layer_from_selection(cut=True)
-        )
         self._merge_down_action = QAction("Merge down", self)
         self._merge_down_action.setShortcut(QKeySequence("Ctrl+E"))
         self._merge_down_action.triggered.connect(self._merge_down)
@@ -202,11 +193,23 @@ class MainWindow(QMainWindow):
         self._rename_layer_action.setShortcut(QKeySequence(self._shortcut("layer.rename")))
         self._rename_layer_action.triggered.connect(self._rename_selected_layer)
         self._copy_layers_action = QAction("Copy selected layers", self)
-        self._copy_layers_action.setShortcut(QKeySequence("Ctrl+C"))
+        self._copy_layers_action.setShortcut(QKeySequence(self._shortcut("layer.copy")))
+        self._copy_layers_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self._copy_layers_action.triggered.connect(self._copy_selected_layers)
         self._paste_layers_action = QAction("Paste layers", self)
-        self._paste_layers_action.setShortcut(QKeySequence("Ctrl+V"))
+        self._paste_layers_action.setShortcut(QKeySequence(self._shortcut("layer.paste")))
+        self._paste_layers_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self._paste_layers_action.triggered.connect(self._paste_layers)
+        self._cut_layers_action = QAction("Cut selection or selected layers", self)
+        self._cut_layers_action.setShortcut(QKeySequence(self._shortcut("layer.cut")))
+        self._cut_layers_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self._cut_layers_action.triggered.connect(self._cut_selection_or_layers)
+        self._copy_paste_action = QAction("Copy and paste in place", self)
+        self._copy_paste_action.setShortcut(
+            QKeySequence(self._shortcut("layer.copy_paste"))
+        )
+        self._copy_paste_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self._copy_paste_action.triggered.connect(self._copy_paste_in_place)
         self._theme_action = QAction("Toggle theme", self)
         self._theme_action.triggered.connect(self._toggle_theme)
         self._command_action = QAction("Command palette", self)
@@ -257,6 +260,10 @@ class MainWindow(QMainWindow):
             "layer.move_down": lambda: self._move_selected_layer(1),
             "layer.toggle_visibility": self._toggle_selected_visibility,
             "layer.rename": self._rename_selected_layer,
+            "layer.copy": self._copy_selected_layers,
+            "layer.paste": self._paste_layers,
+            "layer.cut": self._cut_selection_or_layers,
+            "layer.copy_paste": self._copy_paste_in_place,
             "application.command_palette": self._show_command_palette,
             "canvas.zoom_in": self._zoom_in,
             "canvas.zoom_out": self._zoom_out,
@@ -326,7 +333,8 @@ class MainWindow(QMainWindow):
                 "polygon_selection",
                 "color_selection",
             }:
-                self._create_layer_from_selection(cut=False)
+                # Selection is a persistent document state. Enter must not
+                # dispatch to the canvas crop handler or mutate layer pixels.
                 event.accept()
                 return True
         if self._canvas.hasFocus() and event.key() in (
@@ -451,6 +459,8 @@ class MainWindow(QMainWindow):
         edit_menu.addSeparator()
         edit_menu.addAction(self._copy_layers_action)
         edit_menu.addAction(self._paste_layers_action)
+        edit_menu.addAction(self._cut_layers_action)
+        edit_menu.addAction(self._copy_paste_action)
         window_menu = self.menuBar().addMenu("Window")
         window_menu.addAction(self._workspace_action)
         window_menu.addSeparator()
@@ -480,8 +490,6 @@ class MainWindow(QMainWindow):
 
         layer_menu = self.menuBar().addMenu("Layer")
         layer_menu.addAction(self._add_layer_action)
-        layer_menu.addAction(self._layer_via_copy_action)
-        layer_menu.addAction(self._layer_via_cut_action)
         layer_menu.addAction(self._duplicate_layer_action)
         layer_menu.addSeparator()
         layer_menu.addAction(self._merge_down_action)
@@ -744,21 +752,45 @@ class MainWindow(QMainWindow):
         if hasattr(self, '_tool_status_label'):
             self._tool_status_label.setText(f"Tool: {tool.name}")
 
+    def _on_crop_committed(self) -> None:
+        """Accept canvas crop signals only while the Crop tool is active."""
+        if self._active_tool_id == "crop":
+            self._commit_crop_from_selection()
+
     def _on_layer_selection_changed(self, layer_id: object) -> None:
         """Handle layer selection change in sidebar layer list or canvas hit-testing."""
-        if layer_id is None:
+        selected_ids = (
+            tuple(layer_id)
+            if isinstance(layer_id, tuple)
+            else (() if layer_id is None else (layer_id,))
+        )
+        if not selected_ids:
+            self._selected_layer_ids_state = ()
+            self._canvas.clear_active_layer_rect()
+            if hasattr(self._controller, "set_active_layer"):
+                self._controller.set_active_layer(None)
             return
         doc = self._controller.document
         if doc is None:
             return
+        self._sidebar.set_selected_layers(selected_ids)
+        self._selected_layer_ids_state = selected_ids
+        layer_id = selected_ids[0]
+        selected_layers = [
+            layer for layer in doc.layers if layer.id in selected_ids
+        ]
         layer = next((l for l in doc.layers if l.id == layer_id), None)
         if layer is not None:
             self.statusBar().showMessage(f"Active layer: {layer.name}")
             if hasattr(self._controller, "set_active_layer"):
                 self._controller.set_active_layer(layer.id)  # type: ignore[arg-type]
             rect = self._selected_layer_content_rect(doc, layer.id)
-            self._canvas.set_active_layer_rect(
-                *rect, layer.name, doc.image.width, doc.image.height
+            rects = [
+                self._selected_layer_content_rect(doc, item.id)
+                for item in selected_layers
+            ]
+            self._canvas.set_active_layer_rects(
+                tuple(rects), doc.image.width, doc.image.height
             )
             from dip_studio.application.presentation_bridge import is_text_layer
             if self._active_tool_id == "text" and is_text_layer(layer):
@@ -929,8 +961,13 @@ class MainWindow(QMainWindow):
             self._resize_handle = None
             hit_layer = self._controller.hit_test_layer(ix, iy)
             if hit_layer is not None:
-                self._sidebar.select_layer(hit_layer.id)
-                self._on_layer_selection_changed(hit_layer.id)
+                self._sidebar.select_layer(
+                    hit_layer.id,
+                    additive=bool(
+                        event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+                    ),
+                )
+                self._on_layer_selection_changed(self._selected_layer_ids())
                 handle = self._canvas.active_layer_handle_at(pos)
                 if handle is not None and getattr(hit_layer, "shape_type", None):
                     self._resize_handle = handle
@@ -1592,11 +1629,104 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Close document failed", str(error))
 
     def _copy_selected_layers(self) -> None:
+        doc = self._controller.document
+        selection = self._active_selection_rect(doc)
         selected = self._selected_layer_ids()
+        if selection is not None and selected:
+            try:
+                current_selection = doc.selections[-1] if doc and doc.selections else None
+                self._controller.copy_selection_to_clipboard(
+                    selected[0],
+                    selection,
+                    mask_buffer_id=(
+                        current_selection.mask_buffer_id
+                        if current_selection is not None
+                        else None
+                    ),
+                )
+                self.statusBar().showMessage("Copied selection")
+                return
+            except (KeyError, ValueError, RuntimeError) as error:
+                self.statusBar().showMessage(f"Copy failed: {error}", 3000)
+                return
         if not selected:
             return
         count = self._controller.copy_layers(selected)
         self.statusBar().showMessage(f"Copied {count} layer(s)")
+
+    def _cut_selection_or_layers(self) -> None:
+        doc = self._controller.document
+        selected = self._selected_layer_ids()
+        selection = self._active_selection_rect(doc)
+        if selection is None or not selected:
+            self.statusBar().showMessage("Select a layer region before cutting", 3000)
+            return
+        try:
+            current_selection = doc.selections[-1] if doc and doc.selections else None
+            self._controller.copy_selection_to_clipboard(
+                selected[0],
+                selection,
+                cut=True,
+                mask_buffer_id=(
+                    current_selection.mask_buffer_id
+                    if current_selection is not None
+                    else None
+                ),
+            )
+            # Ctrl+X follows clipboard semantics: remove the selected pixels
+            # from the source and keep the extracted pixels ready for Ctrl+V.
+            document = self._controller.document
+            if document is not None:
+                self._show_document(document, "Cut selection", selected)
+        except (KeyError, ValueError, RuntimeError) as error:
+            self.statusBar().showMessage(f"Cut failed: {error}", 3000)
+
+    @staticmethod
+    def _active_selection_rect(
+        document: object | None,
+    ) -> tuple[int, int, int, int] | None:
+        """Read the committed document selection, never the transient canvas box."""
+        if document is None:
+            return None
+        selections = getattr(document, "selections", ())
+        if not selections:
+            return None
+        selection = selections[-1]
+        return (
+            int(selection.x),
+            int(selection.y),
+            int(selection.width),
+            int(selection.height),
+        )
+
+    def _copy_paste_in_place(self) -> None:
+        doc = self._controller.document
+        selected = self._selected_layer_ids()
+        rect = self._active_selection_rect(doc)
+        if doc is None or not selected or rect is None:
+            self.statusBar().showMessage(
+                "Select a region and a layer before copying in place", 3000
+            )
+            return
+        selection = doc.selections[-1] if doc.selections else None
+        try:
+            self._controller.copy_selection_to_clipboard(
+                selected[0],
+                rect,
+                cut=True,
+                mask_buffer_id=(
+                    selection.mask_buffer_id if selection is not None else None
+                ),
+            )
+            document = self._controller.paste_layers()
+            pasted_ids = tuple(layer.id for layer in document.layers[-1:])
+            self._show_document(document, "Copied selection in place", pasted_ids)
+            self._canvas.set_selection_rect(
+                self._canvas._selection_rect,
+                kind=self._canvas._selection_kind,
+            )
+        except (KeyError, ValueError, RuntimeError) as error:
+            self.statusBar().showMessage(f"Copy in place failed: {error}", 3000)
 
     def _paste_layers(self) -> None:
         try:
@@ -1801,7 +1931,7 @@ class MainWindow(QMainWindow):
         )
 
     def _selected_layer_ids(self) -> tuple[object, ...]:
-        return self._sidebar.selected_layer_ids()
+        return self._selected_layer_ids_state or self._sidebar.selected_layer_ids()
 
     def _add_layer(self) -> None:
         try:
@@ -2099,10 +2229,12 @@ class MainWindow(QMainWindow):
         ):
             document = current_document
         if not selected_ids:
-            selected_ids = self._sidebar.selected_layer_ids()
+            selected_ids = self._selected_layer_ids_state or self._sidebar.selected_layer_ids()
             if not selected_ids and document.layers:
                 selected_ids = (document.layers[0].id,)
+        self._selected_layer_ids_state = tuple(selected_ids)
         self._sidebar.show_layers(document.layers, selected_ids)
+        self._on_layer_selection_changed(tuple(selected_ids))
 
         if hasattr(self._sidebar, 'set_history_states'):
             labels = self._controller.history_labels()
@@ -2267,6 +2399,10 @@ class MainWindow(QMainWindow):
             "layer.move_down": self._move_layer_down_action,
             "layer.toggle_visibility": self._toggle_layer_visibility_action,
             "layer.rename": self._rename_layer_action,
+            "layer.copy": self._copy_layers_action,
+            "layer.paste": self._paste_layers_action,
+            "layer.cut": self._cut_layers_action,
+            "layer.copy_paste": self._copy_paste_action,
             "application.command_palette": self._command_action,
             "canvas.zoom_in": self._zoom_in_action,
             "canvas.zoom_out": self._zoom_out_action,

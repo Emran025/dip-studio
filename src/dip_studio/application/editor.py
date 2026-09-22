@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -222,7 +222,9 @@ class EditorController:
     def copy_layers(self, layer_ids: tuple[LayerId, ...]) -> int:
         document = self._session.document
         selected = set(layer_ids)
-        self._clipboard = tuple(layer for layer in document.layers if layer.id in selected)
+        self._clipboard = tuple(
+            layer for layer in document.layers if layer.id in selected
+        )
         return len(self._clipboard)
 
     def paste_layers(self) -> ImageDocument:
@@ -230,15 +232,63 @@ class EditorController:
             raise RuntimeError("Clipboard does not contain layers")
         from uuid import uuid4
 
-        layers = tuple(
-            Layer(LayerId(uuid4()), f"{layer.name} copy", layer.visible, layer.opacity)
-            for layer in self._clipboard
-        )
+        layers_list: list[Layer] = []
+        for layer in self._clipboard:
+            buffer_id = layer.buffer_id
+            if buffer_id is not None and self._data_store is not None:
+                buffer_id = self._data_store.copy_on_write(buffer_id)
+            layers_list.append(
+                replace(
+                    layer,
+                    id=LayerId(uuid4()),
+                    name=f"{layer.name} copy",
+                    buffer_id=buffer_id,
+                    locked=False,
+                )
+            )
+        layers = tuple(layers_list)
         document = self._session.document
         self._history_for_active().execute(
             PasteLayers(layers, len(document.layers)), self._session
         )
         return self._session.document
+
+    def copy_selection_to_clipboard(
+        self,
+        layer_id: LayerId,
+        rect: tuple[int, int, int, int],
+        *,
+        cut: bool = False,
+        mask_buffer_id: str | None = None,
+    ) -> None:
+        """Copy a document-space selection as a same-position clipboard layer."""
+        document = self._session.document
+        layer = next((item for item in document.layers if item.id == layer_id), None)
+        if layer is None or layer.buffer_id is None or self._data_store is None:
+            raise ValueError("Selected layer has no image content")
+        x, y, width, height = rect
+        selection_buffer, source_buffer = self._data_store.extract_selection(
+            layer.buffer_id,
+            x,
+            y,
+            width,
+            height,
+            document.image.width,
+            document.image.height,
+            cut=cut,
+            mask_buffer_id=mask_buffer_id,
+        )
+        if cut and source_buffer is not None:
+            self._history_for_active().execute(
+                ChangeLayer(layer.id, buffer_id=source_buffer), self._session
+            )
+        self._clipboard = (
+            layer.changed(
+                name=f"{layer.name} selection",
+                buffer_id=selection_buffer,
+                locked=False,
+            ),
+        )
 
     def save_project(self, path: Path) -> ImageDocument:
         if self._project_store is None:

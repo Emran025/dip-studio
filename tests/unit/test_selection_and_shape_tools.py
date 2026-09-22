@@ -1,6 +1,8 @@
 """Unit tests for selection tools, shape drawing, and Shift/Alt geometric constraints."""
 
-from PySide6.QtCore import QPoint, QRect
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QApplication
 import pytest
 
 from dip_studio.application.editor import EditorController
@@ -9,6 +11,27 @@ from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.infrastructure.shape_commands import DrawShape
 from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.rendering.ports import BlankDocumentRenderer
+
+
+def test_canvas_enter_only_commits_crop_in_crop_mode() -> None:
+    app = QApplication.instance() or QApplication([])
+    canvas = CanvasView()
+    canvas.set_selection_rect(QRect(1, 1, 5, 5))
+    committed: list[bool] = []
+    canvas.cropCommitted.connect(lambda: committed.append(True))
+
+    canvas.keyPressEvent(
+        QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+    )
+    assert committed == []
+
+    canvas.set_crop_mode(True)
+    canvas.keyPressEvent(
+        QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+    )
+    assert committed == [True]
+    canvas.close()
+    del app
 
 
 def test_canvas_compute_constrained_rect_shift_and_alt() -> None:
