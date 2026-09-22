@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from dip_studio.application.commands import Command
 from dip_studio.application.session import DocumentSession
-from dip_studio.domain.model import ImageDocument, Layer, LayerId
+from dip_studio.domain.model import ImageDocument, Layer, LayerId, Transform, _UNSET
 
 
 class ChangeLayer(Command):
@@ -20,6 +20,7 @@ class ChangeLayer(Command):
         blend_mode: str | None = None,
         locked: bool | None = None,
         buffer_id: str | None = None,
+        transform: Transform | None | object = _UNSET,
     ) -> None:
         self._layer_id = layer_id
         self._visible = visible
@@ -27,6 +28,7 @@ class ChangeLayer(Command):
         self._blend_mode = blend_mode
         self._locked = locked
         self._buffer_id = buffer_id
+        self._transform = transform
         self._previous: ImageDocument | None = None
 
     def execute(self, session: DocumentSession) -> None:
@@ -44,6 +46,7 @@ class ChangeLayer(Command):
             blend_mode=self._blend_mode,
             locked=self._locked,
             buffer_id=self._buffer_id if self._buffer_id is not None else layer.buffer_id,
+            transform=self._transform,
         )
         layers = document.layers[:index] + (updated,) + document.layers[index + 1 :]
         self._previous = document
@@ -52,6 +55,47 @@ class ChangeLayer(Command):
     def undo(self, session: DocumentSession) -> None:
         if self._previous is None:
             raise RuntimeError("Layer command has not executed")
+        session.replace(self._previous)
+
+
+class TranslateLayer(Command):
+    label = "Move Layer Position"
+
+    def __init__(self, layer_id: LayerId, dx: float, dy: float) -> None:
+        self._layer_id = layer_id
+        self._dx = dx
+        self._dy = dy
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        index = next(
+            (position for position, layer in enumerate(document.layers) if layer.id == self._layer_id),
+            None,
+        )
+        if index is None:
+            raise KeyError("Layer does not exist")
+        layer = document.layers[index]
+        if layer.locked:
+            raise RuntimeError(f"Layer '{layer.name}' is locked")
+        current_t = layer.transform or Transform()
+        new_t = Transform(
+            tx=current_t.tx + self._dx,
+            ty=current_t.ty + self._dy,
+            sx=current_t.sx,
+            sy=current_t.sy,
+            rotation=current_t.rotation,
+            skew_x=current_t.skew_x,
+            skew_y=current_t.skew_y,
+        )
+        updated = layer.changed(transform=new_t)
+        layers = document.layers[:index] + (updated,) + document.layers[index + 1 :]
+        self._previous = document
+        session.replace(document.changed(layers=layers))
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Translate layer command has not executed")
         session.replace(self._previous)
 
 
@@ -380,7 +424,10 @@ class CropDocument(Command):
         document = session.document
         new_spec = document.image.changed(width=self._new_width, height=self._new_height)
         new_layers = tuple(
-            layer.changed(buffer_id=self._layer_buffer_map.get(layer.id, layer.buffer_id))
+            layer.changed(
+                buffer_id=self._layer_buffer_map.get(layer.id, layer.buffer_id),
+                transform=None,
+            )
             for layer in document.layers
         )
         self._previous = document

@@ -1,4 +1,4 @@
-"""Application-facing editor orchestration for the first vertical slice."""
+﻿"""Application-facing editor orchestration for the first vertical slice."""
 from __future__ import annotations
 
 from pathlib import Path
