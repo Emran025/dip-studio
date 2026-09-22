@@ -62,6 +62,7 @@ _QTAWESOME_NAMES = {
     "layer.merge": "mdi6.call-merge",
     "layer.group": "mdi6.folder-multiple-outline",
     "layer.ungroup": "mdi6.folder-remove-outline",
+    "sidebar": "mdi6.view-sidebar-outline",
     "layer.visible": "mdi6.eye-outline",
     "layer.hidden": "mdi6.eye-off-outline",
     "file.new": "fa5s.file",
@@ -92,7 +93,12 @@ def icon_for(
     icon_name = _QTAWESOME_NAMES.get(name)
     if icon_name is None:
         return _vector_icon_for(name, color)
-    return qtawesome.icon(icon_name, color=color)
+    try:
+        return qtawesome.icon(icon_name, color=color)
+    except Exception:
+        # QtAwesome's installed font set can lag behind its Python package.
+        # Keep the UI usable by falling back to the built-in icon.
+        return _vector_icon_for(name, color)
 
 
 def _vector_icon_for(name: str, color: str) -> QIcon:
@@ -125,6 +131,7 @@ def _vector_icon_for(name: str, color: str) -> QIcon:
         "shape_ellipse": _selection,
         "shape_line": _edge,
         "shape_polygon": _lasso,
+        "sidebar": _sidebar,
         "histogram": _edge,
         "threshold": _gradient,
         "morphology": _blur,
@@ -137,6 +144,8 @@ def _vector_icon_for(name: str, color: str) -> QIcon:
         "layer.lock": _lock,
         "layer.unlock": _unlock,
         "layer.merge": _merge,
+        "layer.group": _shape,
+        "layer.ungroup": _remove,
         "layer.visible": _eye,
         "layer.hidden": _eye_off,
         "file.new": _file,
@@ -304,6 +313,16 @@ def _shape(p: QPainter, c: QColor) -> None:
     p.setBrush(Qt.BrushStyle.NoBrush)
     p.drawRect(QRectF(11, 12, 23, 23))
     p.drawEllipse(QPointF(43, 43), 12, 12)
+
+
+def _sidebar(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3.5))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRect(QRectF(10, 12, 44, 40))
+    p.drawLine(24, 12, 24, 52)
+    p.drawLine(30, 22, 48, 22)
+    p.drawLine(30, 32, 48, 32)
+    p.drawLine(30, 42, 44, 42)
 
 
 def _add(p: QPainter, c: QColor) -> None:

@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QColorDialog,
 )
+from dip_studio.presentation.vector_icons import icon_for
 
 class TextLayerDialog(QDialog):
     """Modal dialog for composing / editing a TextLayer.
@@ -138,12 +139,18 @@ class TextLayerDialog(QDialog):
 
         # Alignment
         self._align_combo = QComboBox()
-        self._align_combo.addItems(["left", "center", "right"])
+        for label, icon_name in (
+            ("left", "layer.up"),
+            ("center", "selection"),
+            ("right", "layer.down"),
+        ):
+            self._align_combo.addItem(icon_for(icon_name), label)
         form.addRow("Alignment:", self._align_combo)
 
         # Writing direction
         self._dir_combo = QComboBox()
-        self._dir_combo.addItems(["ltr", "rtl"])
+        self._dir_combo.addItem(icon_for("text"), "ltr")
+        self._dir_combo.addItem(icon_for("text"), "rtl")
         form.addRow("Direction:", self._dir_combo)
 
         # Letter spacing

@@ -185,7 +185,9 @@ class MainWindow(QMainWindow):
         self._duplicate_layer_action.setShortcut(QKeySequence(self._shortcut("layer.duplicate")))
         self._duplicate_layer_action.triggered.connect(self._duplicate_selected_layer)
         self._remove_layer_action = QAction("Remove selected layers", self)
+        self._remove_layer_action.setIcon(icon_for("layer.remove"))
         self._remove_layer_action.setShortcut(QKeySequence(self._shortcut("layer.remove")))
+        self._remove_layer_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self._remove_layer_action.triggered.connect(self._remove_selected_layers)
         self._move_layer_up_action = QAction("Move layer up", self)
         self._move_layer_up_action.setShortcut(QKeySequence(self._shortcut("layer.move_up")))
@@ -708,7 +710,7 @@ class MainWindow(QMainWindow):
         schema = tuple(
             ParameterDefinition(
                 parameter.label, parameter.kind, parameter.default,
-                parameter.minimum, parameter.maximum, parameter.choices,
+                parameter.minimum, parameter.maximum, parameter.choices, parameter.id,
             )
             for parameter in tool.parameters
         )
@@ -2407,6 +2409,10 @@ class MainWindow(QMainWindow):
 
     def _apply_theme(self) -> None:
         self.setPalette(palette_for(self._tokens))
+        application = QApplication.instance()
+        if application is not None:
+            application.setPalette(palette_for(self._tokens))
+            application.setStyleSheet(stylesheet_for(self._tokens))
         self.setStyleSheet(
             stylesheet_for(self._tokens)
             + f"""

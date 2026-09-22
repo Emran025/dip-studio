@@ -177,6 +177,13 @@ class DocParser:
         html = re.sub(r"^### (.*?)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
         html = re.sub(r"^#### (.*?)$", r"<h4>\1</h4>", html, flags=re.MULTILINE)
 
+        # Markdown thematic breaks must remain visual separators, not paragraph text.
+        html = re.sub(
+            r"(?m)^\s*(?:-{3,}|\*{3,}|_{3,})\s*$",
+            '<hr class="doc-separator" />',
+            html,
+        )
+
         # 4. Bold / Italic / Code inline
         html = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", html)
         html = re.sub(r"\*(.*?)\*", r"<em>\1</em>", html)
@@ -204,7 +211,10 @@ class DocParser:
 
         # 6. Paragraph breaks
         html = re.sub(r"\n\n+", "</p><p>", html)
-        return f"<p>{html}</p>"
+        html = f"<p>{html}</p>"
+        html = re.sub(r"<p>\s*(<(?:h[1-4]|hr|ul|div)\b)", r"\1", html)
+        html = re.sub(r"(</(?:h[1-4]|hr|ul|div)>)\s*</p>", r"\1", html)
+        return html
 
     @classmethod
     def _resolve_image_uri(cls, rel_src: str, base_dir: Path) -> str:
@@ -245,11 +255,14 @@ class DocParser:
   h2 {{ color: #7dd3fc; font-size: 18px; margin-top: 20px; margin-bottom: 12px; }}
   h3 {{ color: #93c5fd; font-size: 15px; margin-top: 16px; margin-bottom: 8px; }}
   p {{ margin-bottom: 12px; }}
-  ul {{ margin-{align}: 20px; margin-bottom: 12px; }}
+  p, h1, h2, h3, h4, li, blockquote {{ direction: {direction}; text-align: {align}; }}
+  ul {{ direction: {direction}; margin-{align}: 20px; margin-bottom: 12px; }}
   li {{ margin-bottom: 4px; }}
   strong {{ color: #f8fafc; font-weight: bold; }}
   code {{ font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; }}
   a {{ color: #38bdf8; text-decoration: none; }}
+  hr.doc-separator {{ border: 0; border-top: 1px solid #475569; margin: 22px 0; }}
+  blockquote {{ border-{align}: 3px solid #38bdf8; margin: 14px 0; padding: 8px 14px; color: #cbd5e1; }}
 </style>
 </head>
 <body>

@@ -24,6 +24,41 @@ def stylesheet_for(tokens: ThemeTokens) -> str:
         QWidget {{
             color: {tokens.foreground};
         }}
+        /* One application-wide scrollbar policy: compact, square, theme-aware,
+           with no arrow buttons at either end. */
+        QScrollBar:vertical {{
+            background: {tokens.surface};
+            width: 8px;
+            margin: 0;
+            border: 0;
+        }}
+        QScrollBar:horizontal {{
+            background: {tokens.surface};
+            height: 8px;
+            margin: 0;
+            border: 0;
+        }}
+        QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+            background: {tokens.border};
+            border: 0;
+            border-radius: 0;
+            min-height: 24px;
+            min-width: 24px;
+        }}
+        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{
+            background: {tokens.foreground_muted};
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+            width: 0;
+            height: 0;
+            border: 0;
+            background: transparent;
+        }}
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+            background: transparent;
+        }}
         QDialog, QMainWindow {{
             background: {tokens.surface};
         }}

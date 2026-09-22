@@ -1,6 +1,7 @@
 """Photoshop-style right workspace sidebar with navigable panel tabs."""
 
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -27,6 +28,15 @@ from dip_studio.presentation.vector_icons import icon_for
 
 class LayerTreeWidget(QTreeWidget):
     """QTreeWidget with the small QListWidget compatibility surface used by the shell."""
+
+    deleteRequested = Signal()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.deleteRequested.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def count(self) -> int:
         return self.topLevelItemCount()
@@ -102,23 +112,26 @@ class RightSidebar(QWidget):
         self.layers.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.layers.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layers.customContextMenuRequested.connect(self._layer_context_menu)
+        self.layers.deleteRequested.connect(lambda: self._structure("remove"))
         self._layer_structure_callback = None
         self._layer_rename_callback = None
         self.layers_data: tuple[object, ...] = ()
 
         # Layer controls: Blend Mode, Lock, Opacity
         self.layer_blend_mode = QComboBox()
-        self.layer_blend_mode.addItems([
-            "Normal",
-            "Multiply",
-            "Screen",
-            "Overlay",
-            "Soft Light",
-            "Hard Light",
-            "Darken",
-            "Lighten",
-            "Difference",
-        ])
+        blend_modes = (
+            ("Normal", "shape"),
+            ("Multiply", "gradient"),
+            ("Screen", "zoom"),
+            ("Overlay", "selection"),
+            ("Soft Light", "brush"),
+            ("Hard Light", "edge"),
+            ("Darken", "layer.lock"),
+            ("Lighten", "layer.visible"),
+            ("Difference", "transform"),
+        )
+        for label, icon_name in blend_modes:
+            self.layer_blend_mode.addItem(icon_for(icon_name), label)
         self.layer_blend_mode.currentTextChanged.connect(self._blend_mode_changed)
 
         self.layer_lock_button = QToolButton()
@@ -173,17 +186,19 @@ class RightSidebar(QWidget):
         # Layer structure action buttons
         controls = QHBoxLayout()
         for icon_name, action, tooltip in (
+            ("layer.remove", "remove", "Remove selected layers (Delete)"),
             ("layer.add", "add", "Add layer"),
             ("layer.group", "group", "Group selected layers"),
             ("layer.ungroup", "ungroup", "Ungroup selected group"),
-            ("layer.remove", "remove", "Remove selected layers"),
             ("layer.duplicate", "duplicate", "Duplicate selected layer"),
             ("layer.merge", "merge_down", "Merge layer down"),
             ("layer.up", "up", "Move layer up"),
             ("layer.down", "down", "Move layer down"),
         ):
             button = QToolButton()
-            button.setObjectName("layerActionButton")
+            button.setObjectName(
+                "removeLayerButton" if action == "remove" else "layerActionButton"
+            )
             button.setIcon(icon_for(icon_name))
             button.setIconSize(QSize(12, 12))
             button.setFixedSize(36, 30)

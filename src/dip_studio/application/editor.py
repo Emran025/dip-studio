@@ -619,11 +619,64 @@ class EditorController:
     def translate_layer(
         self, layer_id: "LayerId", dx: float, dy: float
     ) -> "ImageDocument":
-        """Translate the specified layer position by (dx, dy) pixels."""
+        """Translate a layer while keeping its content inside the document."""
         from dip_studio.application.layer_commands import TranslateLayer
 
+        document = self._session.document
+        layer = next(
+            (candidate for candidate in document.layers if candidate.id == layer_id),
+            None,
+        )
+        if layer is None:
+            raise KeyError("Layer does not exist")
+        if layer.locked:
+            raise RuntimeError(f"Layer '{layer.name}' is locked")
+
+        transform = layer.transform
+        current_tx = float(transform.tx) if transform else 0.0
+        current_ty = float(transform.ty) if transform else 0.0
+        scale_x = abs(float(transform.sx)) if transform else 1.0
+        scale_y = abs(float(transform.sy)) if transform else 1.0
+
+        if isinstance(layer, ShapeLayer) and len(layer.vertices) >= 4:
+            base_x, base_y, width, height = (
+                float(value) for value in layer.vertices[:4]
+            )
+        elif layer.buffer_id is not None and self._data_store is not None:
+            try:
+                buffer = self._data_store.get(layer.buffer_id)
+            except KeyError:
+                buffer = None
+            if buffer is not None and buffer.ndim >= 2:
+                base_x, base_y = 0.0, 0.0
+                height, width = buffer.shape[:2]
+            else:
+                base_x, base_y, width, height = (
+                    0.0,
+                    0.0,
+                    float(document.image.width),
+                    float(document.image.height),
+                )
+        else:
+            base_x, base_y, width, height = (
+                0.0,
+                0.0,
+                float(document.image.width),
+                float(document.image.height),
+            )
+
+        rendered_width = max(1.0, width * scale_x)
+        rendered_height = max(1.0, height * scale_y)
+        min_tx = -base_x
+        max_tx = max(min_tx, float(document.image.width) - rendered_width - base_x)
+        min_ty = -base_y
+        max_ty = max(min_ty, float(document.image.height) - rendered_height - base_y)
+        target_tx = min(max(current_tx + dx, min_tx), max_tx)
+        target_ty = min(max(current_ty + dy, min_ty), max_ty)
+
         self._history_for_active().execute(
-            TranslateLayer(layer_id, dx, dy), self._session
+            TranslateLayer(layer_id, target_tx - current_tx, target_ty - current_ty),
+            self._session,
         )
         self._previews.pop(str(self._session.document.id), None)
         return self._session.document

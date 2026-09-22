@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -28,6 +28,25 @@ from dip_studio.application.shortcut_registry import (
     ShortcutRegistry,
     default_shortcut_registry,
 )
+from dip_studio.presentation.vector_icons import icon_for
+
+
+def _choice_icon_name(choice: str) -> str:
+    """Choose a meaningful existing icon for common choice-list values."""
+    normalized = choice.casefold()
+    if any(token in normalized for token in ("rgba", "rgb", "color", "colour")):
+        return "color_selection"
+    if "gray" in normalized or "grey" in normalized:
+        return "edge"
+    if normalized in {"ltr", "rtl"}:
+        return "text"
+    if normalized in {"png", "jpeg", "jpg", "bmp", "tiff", "ppm"}:
+        return "file.new"
+    if any(token in normalized for token in ("multiply", "darken")):
+        return "gradient"
+    if any(token in normalized for token in ("screen", "lighten")):
+        return "zoom"
+    return "selection"
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +71,12 @@ class NewProjectDialog(QDialog):
         self._height.setRange(1, 100000)
         self._height.setValue(600)
         self._color_mode = QComboBox()
-        self._color_mode.addItems(["RGBA 8-bit", "RGB 8-bit", "Grayscale 8-bit"])
+        for label, icon_name in (
+            ("RGBA 8-bit", "color_selection"),
+            ("RGB 8-bit", "gradient"),
+            ("Grayscale 8-bit", "edge"),
+        ):
+            self._color_mode.addItem(icon_for(icon_name), label)
 
         form = QFormLayout()
         form.addRow("Name", self._name)
@@ -224,6 +248,7 @@ class ParameterDefinition:
     minimum: float = 0
     maximum: float = 100
     choices: tuple[str, ...] = ()
+    id: str | None = None
 
 
 class ToolParametersPanel(QWidget):
@@ -282,7 +307,11 @@ class ToolParametersPanel(QWidget):
                 control = widget
             elif definition.kind == "choice":
                 widget = QComboBox()
-                widget.addItems(list(definition.choices))
+                for choice in definition.choices:
+                    widget.addItem(
+                        icon_for(_choice_icon_name(choice)),
+                        choice,
+                    )
                 widget.setCurrentText(str(definition.default))
                 widget.currentTextChanged.connect(lambda _t: self.previewRequested.emit(self.values()))
                 control = widget
@@ -314,16 +343,21 @@ class ToolParametersPanel(QWidget):
                 value = control.text()
             else:
                 raise TypeError(f"Unsupported parameter control: {type(control).__name__}")
-            values[definition.label] = value
+            values[definition.id or definition.label] = value
         return values
 
     def set_values(self, values: dict[str, object]) -> None:
         """Update control values programmatically by label or index."""
-        label_to_index = {d.label.lower(): str(i) for i, d in enumerate(self._definitions)}
+        key_to_index = {
+            key.lower(): str(i)
+            for i, definition in enumerate(self._definitions)
+            for key in (definition.label, definition.id or definition.label)
+        }
         for k, v in values.items():
-            idx = label_to_index.get(str(k).lower())
+            idx = key_to_index.get(str(k).lower())
             if idx and idx in self._controls:
                 ctrl = self._controls[idx]
+                blocker = QSignalBlocker(ctrl)
                 if isinstance(ctrl, QSpinBox):
                     try:
                         ctrl.setValue(int(float(v)))
@@ -340,6 +374,7 @@ class ToolParametersPanel(QWidget):
                     ctrl.setChecked(bool(v))
                 elif isinstance(ctrl, QLineEdit):
                     ctrl.setText(str(v))
+                del blocker
 
 
 # ──────────────────────────── Analysis Dialogs ───────────────────────────────
@@ -432,7 +467,18 @@ class HistogramDialog(QDialog):
 
         self._data = histogram_data
         self._channel_selector = QComboBox()
-        self._channel_selector.addItems(list(histogram_data.keys()))
+        channel_icons = {
+            "R": "brush",
+            "G": "gradient",
+            "B": "shape",
+            "A": "layer.visible",
+            "L": "edge",
+        }
+        for channel in histogram_data:
+            self._channel_selector.addItem(
+                icon_for(channel_icons.get(channel.upper(), "histogram")),
+                channel,
+            )
         self._channel_selector.currentTextChanged.connect(self._refresh)
 
         self._histogram_widget = _HistogramWidget(self)
@@ -564,7 +610,8 @@ class ExportDialog(QDialog):
         self.setMinimumSize(380, 200)
 
         self._format = QComboBox()
-        self._format.addItems(["PNG", "JPEG", "BMP", "TIFF", "PPM"])
+        for format_name in ("PNG", "JPEG", "BMP", "TIFF", "PPM"):
+            self._format.addItem(icon_for("file.new"), format_name)
         self._format.currentTextChanged.connect(self._on_format_change)
 
         self._quality_label_widget = __import__(

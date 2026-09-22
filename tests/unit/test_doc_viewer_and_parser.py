@@ -8,6 +8,7 @@ import pytest
 
 from dip_studio.infrastructure.doc_parser import DocPage, DocParser
 from dip_studio.presentation.doc_viewer import DocSidebarWidget, DocViewerDialog
+from dip_studio.presentation.vector_icons import icon_for
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +29,7 @@ def test_doc_parser_arabic_and_english() -> None:
             "---\ntitle: دليل المساعدة\norder: 1\ncategory: User Guide\n---\n"
             "# دليل المساعدة والمعالجة\n"
             "هذا النص باللغة العربية للاختبار.\n"
+            "---\n"
             "> [!NOTE] هذا تنبيه مفيد.\n"
             "![صورة توضيحية](images/tool.png)\n",
             encoding="utf-8",
@@ -50,6 +52,8 @@ def test_doc_parser_arabic_and_english() -> None:
         assert ar_page.metadata.title == "دليل المساعدة"
         assert "Cairo" in ar_page.html_content
         assert "file:///" in ar_page.html_content
+        assert 'class="doc-separator"' in ar_page.html_content
+        assert "<p><hr" not in ar_page.html_content
 
         en_page = next(p for p in pages if "english" in p.file_path.name)
         assert en_page.is_rtl is False
@@ -71,3 +75,28 @@ def test_doc_viewer_dialog_and_sidebar_toggle() -> None:
         assert dialog._sidebar.isHidden()
         dialog.toggle_sidebar()
         assert not dialog._sidebar.isHidden()
+
+
+def test_doc_viewer_uses_cairo_controls_and_responsive_sidebar_button() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        docs_dir = Path(tmpdir)
+        (docs_dir / "ar.md").write_text(
+            "---\ntitle: دليل\nlang: ar\ndirection: rtl\n---\n# دليل\n",
+            encoding="utf-8",
+        )
+        dialog = DocViewerDialog(docs_dir=docs_dir)
+        dialog.resize(1100, 640)
+        dialog._update_sidebar_toggle_button()
+        assert not dialog._toggle_btn.text()
+        assert not dialog._toggle_btn.icon().isNull()
+        assert dialog._prev_btn.font().family() == "Cairo"
+        assert dialog._next_btn.font().family() == "Cairo"
+
+        dialog.resize(700, 640)
+        dialog._update_sidebar_toggle_button()
+        assert not dialog._toggle_btn.text()
+        assert not dialog._toggle_btn.icon().isNull()
+
+
+def test_sidebar_icon_falls_back_when_qtawesome_name_is_unavailable() -> None:
+    assert not icon_for("sidebar").isNull()

@@ -42,6 +42,26 @@ def test_translate_layer_updates_layer_transform():
     assert res_layer.transform.ty == 15.0
 
 
+def test_translate_layer_clamps_content_to_document_bounds():
+    store = ImageDataStore()
+    buffer_id = store.allocate(np.zeros((100, 100, 4), dtype=np.uint8))
+    doc = new_document("Test", 200, 200)
+    layer = Layer(LayerId("layer-1"), "Layer 1", buffer_id=buffer_id)
+    controller = EditorController(BlankDocumentRenderer(), data_store=store)
+    controller._activate_new_document(doc.changed(layers=(layer,)))
+
+    moved = controller.translate_layer(layer.id, 500.0, 500.0)
+
+    assert moved.layers[0].transform is not None
+    assert moved.layers[0].transform.tx == 100.0
+    assert moved.layers[0].transform.ty == 100.0
+
+    moved = controller.translate_layer(layer.id, -500.0, -500.0)
+    assert moved.layers[0].transform is not None
+    assert moved.layers[0].transform.tx == 0.0
+    assert moved.layers[0].transform.ty == 0.0
+
+
 def test_hit_test_layer_finds_layer_under_cursor():
     store = ImageDataStore()
     arr1 = np.zeros((100, 100, 4), dtype=np.uint8)
