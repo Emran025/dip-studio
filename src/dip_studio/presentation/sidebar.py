@@ -10,6 +10,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
     QMenu,
     QToolButton,
     QVBoxLayout,
@@ -19,6 +22,66 @@ from PySide6.QtWidgets import (
 from dip_studio.presentation.dialogs import ToolParametersPanel
 from dip_studio.presentation.panel_group import PanelGroup
 from dip_studio.presentation.vector_icons import icon_for
+from dip_studio.domain.model import GroupLayer
+
+
+class LayerTreeWidget(QTreeWidget):
+    """QTreeWidget with the small QListWidget compatibility surface used by the shell."""
+
+    def count(self) -> int:
+        return self.topLevelItemCount()
+
+    def item(self, row: int) -> QTreeWidgetItem | None:
+        return self.topLevelItem(row)
+
+    def currentRow(self) -> int:
+        item = self.currentItem()
+        return self.indexOfTopLevelItem(item) if item is not None else -1
+
+    def setCurrentRow(self, row: int) -> None:
+        item = self.topLevelItem(row)
+        if item is not None:
+            self.setCurrentItem(item)
+
+    def itemAt(self, position: object) -> QTreeWidgetItem | None:
+        return super().itemAt(position)  # type: ignore[arg-type]
+
+
+class LayerTreeItem(QTreeWidgetItem):
+    """Tree item with QListWidgetItem-compatible role access for existing panel code."""
+
+    def data(self, *args: object) -> object:
+        if len(args) == 1:
+            return super().data(0, args[0])  # type: ignore[arg-type]
+        return super().data(*args)  # type: ignore[arg-type]
+
+    def text(self, *args: object) -> str:
+        if not args:
+            return super().text(0)
+        return super().text(*args)  # type: ignore[arg-type]
+
+    def setIcon(self, *args: object) -> None:
+        if len(args) == 1:
+            super().setIcon(0, args[0])  # type: ignore[arg-type]
+            return
+        super().setIcon(*args)  # type: ignore[arg-type]
+
+    def setData(self, *args: object) -> None:
+        if len(args) == 2:
+            super().setData(0, args[0], args[1])  # type: ignore[arg-type]
+            return
+        super().setData(*args)  # type: ignore[arg-type]
+
+    def setCheckState(self, *args: object) -> None:
+        if len(args) == 1:
+            super().setCheckState(0, args[0])  # type: ignore[arg-type]
+            return
+        super().setCheckState(*args)  # type: ignore[arg-type]
+
+    def checkState(self, *args: object) -> object:
+        if not args:
+            return super().checkState(0)
+        return super().checkState(*args)  # type: ignore[arg-type]
 
 
 class RightSidebar(QWidget):
@@ -31,8 +94,12 @@ class RightSidebar(QWidget):
         self.properties = ToolParametersPanel()
 
         # Layers panel container and controls
-        self.layers = QListWidget()
-        self.layers.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.layers = LayerTreeWidget()
+        self.layers.setHeaderHidden(True)
+        self.layers.setColumnCount(3)
+        self.layers.setColumnWidth(1, 26)
+        self.layers.setColumnWidth(2, 26)
+        self.layers.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.layers.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.layers.customContextMenuRequested.connect(self._layer_context_menu)
         self._layer_structure_callback = None
@@ -69,8 +136,12 @@ class RightSidebar(QWidget):
         self.layer_opacity.setPrefix("Opacity ")
         self.layer_opacity.valueChanged.connect(self._opacity_changed)
 
-        self.layers.currentRowChanged.connect(self._layer_selected)
-        self.layers.itemClicked.connect(lambda item: self._layer_selected(self.layers.row(item)))
+        self.layers.currentItemChanged.connect(
+            lambda current, _previous: self._layer_selected(
+                self.layers.indexOfTopLevelItem(current)
+            )
+        )
+        self.layers.itemClicked.connect(self._item_clicked)
         self.layers.itemChanged.connect(self._visibility_changed)
         self._layer_callback = None
 
@@ -103,6 +174,8 @@ class RightSidebar(QWidget):
         controls = QHBoxLayout()
         for icon_name, action, tooltip in (
             ("layer.add", "add", "Add layer"),
+            ("layer.group", "group", "Group selected layers"),
+            ("layer.ungroup", "ungroup", "Ungroup selected group"),
             ("layer.remove", "remove", "Remove selected layers"),
             ("layer.duplicate", "duplicate", "Duplicate selected layer"),
             ("layer.merge", "merge_down", "Merge layer down"),
@@ -132,22 +205,52 @@ class RightSidebar(QWidget):
         self.layer_lock_button.blockSignals(True)
         self.layers.clear()
         selected_keys = {str(layer_id) for layer_id in selected_ids}
-        for layer in layers:
-            item = QListWidgetItem(layer.name)
+        by_id = {layer.id: layer for layer in layers}
+        child_ids = {
+            child_id
+            for layer in layers
+            if isinstance(layer, GroupLayer)
+            for child_id in layer.children
+        }
+
+        def add_item(layer: object, parent: QTreeWidgetItem | None = None) -> None:
+            item = LayerTreeItem(parent or self.layers)
+            item.setText(0, layer.name)
+            item.setIcon(
+                1,
+                icon_for("layer.visible" if layer.visible else "layer.hidden"),
+            )
             if getattr(layer, "locked", False):
-                item.setIcon(icon_for("layer.lock"))
+                item.setIcon(2, icon_for("layer.lock"))
             item.setData(Qt.ItemDataRole.UserRole, layer.id)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setFlags(
+                item.flags()
+                | Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsSelectable
+                | Qt.ItemFlag.ItemIsEnabled
+            )
             item.setCheckState(
                 Qt.CheckState.Checked if layer.visible else Qt.CheckState.Unchecked
             )
-            self.layers.addItem(item)
             if str(layer.id) in selected_keys:
                 item.setSelected(True)
+                self.layers.setCurrentItem(item)
+            if isinstance(layer, GroupLayer):
+                item.setChildIndicatorPolicy(
+                    QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
+                )
+                for child_id in layer.children:
+                    child = by_id.get(child_id)
+                    if child is not None:
+                        add_item(child, item)
+
+        for layer in layers:
+            if layer.id not in child_ids:
+                add_item(layer)
         selected_items = self.layers.selectedItems()
         if selected_items:
             self.layers.setCurrentItem(selected_items[0])
-        elif layers:
+        elif layers and self.layers.currentItem() is None:
             self.layers.setCurrentRow(0)
         current = self.layers.currentItem()
         if current is not None:
@@ -175,6 +278,24 @@ class RightSidebar(QWidget):
 
     def set_layer_callback(self, callback) -> None:
         self._layer_callback = callback
+
+    def _item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        if column == 1:
+            item.setCheckState(
+                Qt.CheckState.Unchecked
+                if item.checkState() == Qt.CheckState.Checked
+                else Qt.CheckState.Checked
+            )
+        elif column == 2 and self._layer_callback is not None:
+            layer_id = item.data(Qt.ItemDataRole.UserRole)
+            layer = next(
+                (candidate for candidate in self.layers_data if candidate.id == layer_id),
+                None,
+            )
+            if layer is not None:
+                self._layer_callback(
+                    (layer_id,), None, None, None, not getattr(layer, "locked", False)
+                )
 
     def set_layer_structure_callback(self, callback) -> None:
         self._layer_structure_callback = callback
@@ -238,8 +359,9 @@ class RightSidebar(QWidget):
             self._layer_rename_callback(item.data(Qt.ItemDataRole.UserRole), name.strip())
 
     def _layer_selected(self, row: int) -> None:
-        if 0 <= row < self.layers.count():
-            item = self.layers.item(row)
+        item = self.layers.currentItem()
+        if item is not None:
+            row = self.layers.indexOfTopLevelItem(item)
             if item is not None:
                 self.layerSelectionChanged.emit(item.data(Qt.ItemDataRole.UserRole))
             self.layer_opacity.blockSignals(True)
@@ -267,6 +389,14 @@ class RightSidebar(QWidget):
             self.layer_opacity.blockSignals(False)
 
     def _visibility_changed(self, item: QListWidgetItem) -> None:
+        item.setIcon(
+            1,
+            icon_for(
+                "layer.visible"
+                if item.checkState() == Qt.CheckState.Checked
+                else "layer.hidden"
+            ),
+        )
         if self._layer_callback is not None:
             selected = tuple(
                 it.data(Qt.ItemDataRole.UserRole) for it in self.layers.selectedItems()
@@ -303,11 +433,13 @@ class RightSidebar(QWidget):
 
     def _lock_toggled(self, checked: bool) -> None:
         self.layer_lock_button.setIcon(icon_for("layer.lock" if checked else "layer.unlock"))
-        if self._layer_callback is not None and self.layers.currentRow() >= 0:
-            item = self.layers.currentItem()
-            if item is not None:
-                lid = item.data(Qt.ItemDataRole.UserRole)
-                self._layer_callback((lid,), None, None, None, checked)
+        if self._layer_callback is not None and self.layers.currentItem() is not None:
+            selected = tuple(
+                item.data(Qt.ItemDataRole.UserRole)
+                for item in self.layers.selectedItems()
+            )
+            if selected:
+                self._layer_callback(selected, None, None, None, checked)
 
     def selected_layer_id(self) -> object | None:
         item = self.layers.currentItem()
@@ -319,11 +451,13 @@ class RightSidebar(QWidget):
         )
 
     def select_layer(self, layer_id: object) -> None:
-        for row in range(self.layers.count()):
-            item = self.layers.item(row)
+        iterator = QTreeWidgetItemIterator(self.layers)
+        while iterator.value() is not None:
+            item = iterator.value()
             if str(item.data(Qt.ItemDataRole.UserRole)) == str(layer_id):
                 self.layers.setCurrentItem(item)
                 return
+            iterator += 1
 
     def add_history(self, label: str) -> None:
         self.history.addItem(label)

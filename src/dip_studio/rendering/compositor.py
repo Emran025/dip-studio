@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from dip_studio.rendering.layer_evaluation import _apply_adjustment_layer
-from dip_studio.domain.model import AdjustmentLayer, FilterLayer
+from dip_studio.domain.model import AdjustmentLayer, FilterLayer, ShapeLayer
 from dip_studio.rendering.ports import RenderRequest
 from dip_studio.core.errors import RenderingError
 
@@ -123,6 +123,13 @@ class NumpyDocumentRenderer:
                 return evaluate_group(layer, active)
             if isinstance(layer, (AdjustmentLayer, FilterLayer)):
                 return None
+            if isinstance(layer, ShapeLayer) and len(layer.vertices) >= 4:
+                return _transform_layer(
+                    _render_shape_layer(layer, img_w, img_h),
+                    getattr(layer, "transform", None),
+                    img_w,
+                    img_h,
+                )
             if layer.buffer_id is None:
                 return None
             try:
@@ -177,6 +184,53 @@ class NumpyDocumentRenderer:
                     getattr(layer, "blend_mode", "normal") or "normal",
                 )
         return composited
+
+
+def _render_shape_layer(layer: ShapeLayer, width: int, height: int) -> np.ndarray:
+    """Rasterize vector geometry only at render time."""
+    import cv2
+
+    x, y, shape_width, shape_height = (
+        int(round(value)) for value in layer.vertices[:4]
+    )
+    canvas = np.zeros((height, width, 4), dtype=np.uint8)
+    stroke = tuple(int(value) for value in layer.stroke_color)
+    fill = tuple(int(value) for value in layer.fill_color)
+    thickness = max(1, int(round(layer.stroke_width)))
+    if layer.shape_type == "rectangle":
+        if fill[3]:
+            cv2.rectangle(canvas, (x, y), (x + shape_width, y + shape_height), fill, -1)
+        if stroke[3]:
+            cv2.rectangle(
+                canvas, (x, y), (x + shape_width, y + shape_height), stroke, thickness
+            )
+    elif layer.shape_type == "ellipse":
+        center = (x + shape_width // 2, y + shape_height // 2)
+        axes = (max(1, shape_width // 2), max(1, shape_height // 2))
+        if fill[3]:
+            cv2.ellipse(canvas, center, axes, 0, 0, 360, fill, -1)
+        if stroke[3]:
+            cv2.ellipse(canvas, center, axes, 0, 0, 360, stroke, thickness)
+    elif layer.shape_type == "line":
+        color = stroke if stroke[3] else fill
+        cv2.line(canvas, (x, y), (x + shape_width, y + shape_height), color, thickness)
+    elif layer.shape_type == "polygon":
+        points = []
+        cx, cy = x + shape_width // 2, y + shape_height // 2
+        for index in range(6):
+            angle = index * (2 * math.pi / 6)
+            points.append(
+                [
+                    int(cx + shape_width / 2 * math.cos(angle)),
+                    int(cy + shape_height / 2 * math.sin(angle)),
+                ]
+            )
+        polygon = np.array([points], dtype=np.int32)
+        if fill[3]:
+            cv2.fillPoly(canvas, polygon, fill)
+        if stroke[3]:
+            cv2.polylines(canvas, polygon, True, stroke, thickness)
+    return canvas
 
 
 def _compose(

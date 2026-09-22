@@ -777,6 +777,17 @@ class MainWindow(QMainWindow):
             return full
         layer = next((item for item in document.layers if item.id == selected[0]), None)
         if layer is None or layer.buffer_id is None:
+            if hasattr(layer, "vertices"):
+                x, y, width, height = (
+                    int(round(value)) for value in layer.vertices[:4]
+                )
+                transform = getattr(layer, "transform", None)
+                return (
+                    x + int(transform.tx if transform else 0),
+                    y + int(transform.ty if transform else 0),
+                    max(1, width * int(transform.sx if transform else 1)),
+                    max(1, height * int(transform.sy if transform else 1)),
+                )
             return full
         try:
             from dip_studio.rendering.compositor import _to_rgba
@@ -839,6 +850,10 @@ class MainWindow(QMainWindow):
             "ellipse_selection": Qt.CursorShape.CrossCursor,
             "lasso":        Qt.CursorShape.CrossCursor,
             "polygon_selection": Qt.CursorShape.CrossCursor,
+            "shape_rectangle": Qt.CursorShape.CrossCursor,
+            "shape_ellipse": Qt.CursorShape.CrossCursor,
+            "shape_line": Qt.CursorShape.CrossCursor,
+            "shape_polygon": Qt.CursorShape.CrossCursor,
         }
         shape = cursor_map.get(tool_id, Qt.CursorShape.ArrowCursor)
         self._canvas.setCursor(QCursor(shape))
@@ -863,6 +878,11 @@ class MainWindow(QMainWindow):
             "ellipse_selection": self._tool_selection_event,
             "lasso": self._tool_selection_event,
             "polygon_selection": self._tool_selection_event,
+            "color_selection": self._tool_color_selection_event,
+            "shape_rectangle": self._tool_shape_event,
+            "shape_ellipse": self._tool_shape_event,
+            "shape_line": self._tool_shape_event,
+            "shape_polygon": self._tool_shape_event,
             # Paint tools (Phase 5)
             "brush": self._tool_paint_event,
             "pencil": self._tool_paint_event,
@@ -892,10 +912,14 @@ class MainWindow(QMainWindow):
         ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
 
         if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            self._resize_handle = None
             hit_layer = self._controller.hit_test_layer(ix, iy)
             if hit_layer is not None:
                 self._sidebar.select_layer(hit_layer.id)
                 self._on_layer_selection_changed(hit_layer.id)
+                handle = self._canvas.active_layer_handle_at(pos)
+                if handle is not None and getattr(hit_layer, "shape_type", None):
+                    self._resize_handle = handle
             self._move_drag_start = (ix, iy)
             self._canvas.setCursor(Qt.CursorShape.ClosedHandCursor if hit_layer else Qt.CursorShape.SizeAllCursor)
 
@@ -909,7 +933,24 @@ class MainWindow(QMainWindow):
                     target_id = selected[0]
                     layer = next((l for l in doc.layers if l.id == target_id), None)
                     if layer is not None and not layer.locked:
-                        doc = self._controller.translate_layer(target_id, dx, dy)
+                        if self._resize_handle is not None and getattr(layer, "shape_type", None):
+                            left, top, width, height = self._selected_layer_content_rect(
+                                doc, target_id
+                            )
+                            right, bottom = left + width, top + height
+                            if "left" in self._resize_handle:
+                                left = min(ix, right - 1)
+                            if "right" in self._resize_handle:
+                                right = max(ix, left + 1)
+                            if "top" in self._resize_handle:
+                                top = min(iy, bottom - 1)
+                            if "bottom" in self._resize_handle:
+                                bottom = max(iy, top + 1)
+                            doc = self._controller.resize_shape_layer(
+                                target_id, (left, top, right - left, bottom - top)
+                            )
+                        else:
+                            doc = self._controller.translate_layer(target_id, dx, dy)
                         self._move_drag_start = (ix, iy)
                         rect = self._selected_layer_content_rect(doc, target_id)
                         self._canvas.set_active_layer_rect(
@@ -919,6 +960,7 @@ class MainWindow(QMainWindow):
 
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             self._move_drag_start = None
+            self._resize_handle = None
             self._canvas.setCursor(Qt.CursorShape.SizeAllCursor)
 
     def _tool_zoom_event(self, event_type: str, event: object) -> None:
@@ -981,19 +1023,23 @@ class MainWindow(QMainWindow):
             self._polygon_event(event_type, event)
 
     def _rect_selection_event(self, event_type: str, event: object) -> None:
-        """Rectangle / crop drag handler (original logic)."""
+        """Rectangle / crop drag handler supporting Shift (1:1 aspect ratio) and Alt (center-origin)."""
         from PySide6.QtCore import QRect, Qt
         from PySide6.QtGui import QMouseEvent
 
         if not isinstance(event, QMouseEvent):
             return
         pos = event.position().toPoint()
+        modifiers = event.modifiers()
+        shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+
         if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
             self._selection_origin = pos
-            self._canvas.set_selection_rect(QRect(pos, pos))
+            self._canvas.set_selection_rect(QRect(pos, pos), kind="rectangle")
         elif event_type == "move" and self._selection_origin is not None:
-            rect = QRect(self._selection_origin, pos).normalized()
-            self._canvas.set_selection_rect(rect)
+            rect = self._canvas.compute_constrained_rect(self._selection_origin, pos, shift, alt)
+            self._canvas.set_selection_rect(rect, kind="rectangle")
             doc = self._controller.document
             if doc is not None:
                 ix1, iy1 = self._canvas.widget_to_image_pos(
@@ -1009,7 +1055,7 @@ class MainWindow(QMainWindow):
                 )
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             if self._selection_origin is not None:
-                rect = QRect(self._selection_origin, pos).normalized()
+                rect = self._canvas.compute_constrained_rect(self._selection_origin, pos, shift, alt)
                 doc = self._controller.document
                 if doc is not None and rect.width() > 4 and rect.height() > 4:
                     ix1, iy1 = self._canvas.widget_to_image_pos(
@@ -1022,34 +1068,37 @@ class MainWindow(QMainWindow):
                     h = max(1, iy2 - iy1)
                     if self._active_tool_id == "crop":
                         self.statusBar().showMessage(
-                            f"Crop region: {w}×{h} at ({ix1}, {iy1}). Click Apply in Properties to crop."
+                            f"Crop region: {w}×{h} at ({ix1}, {iy1}). Press Enter to commit."
                         )
                     else:
-                        self._controller.set_selection(  # type: ignore[attr-defined]
-                            self._controller.make_selection(
-                                x=ix1, y=iy1, width=w, height=h, kind="rectangle"
-                            )
-                        ) if hasattr(self._controller, "set_selection") else None
+                        sel = self._controller.make_selection(
+                            x=ix1, y=iy1, width=w, height=h, kind="rectangle"
+                        )
+                        self._controller.set_selection(sel)
+                        self.statusBar().showMessage(f"Rectangle selection: {w}×{h}")
                 self._selection_origin = None
 
     def _ellipse_selection_event(self, event_type: str, event: object) -> None:
-        """Ellipse marquee: drag bounding box → rasterise on release."""
+        """Ellipse marquee: drag bounding box with Shift/Alt modifiers → rasterise on release."""
         from PySide6.QtCore import QRect, Qt
         from PySide6.QtGui import QMouseEvent
 
         if not isinstance(event, QMouseEvent):
             return
         pos = event.position().toPoint()
+        modifiers = event.modifiers()
+        shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+
         if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
             self._selection_origin = pos
-            self._canvas.set_selection_rect(QRect(pos, pos))
+            self._canvas.set_selection_rect(QRect(pos, pos), kind="ellipse")
         elif event_type == "move" and self._selection_origin is not None:
-            rect = QRect(self._selection_origin, pos).normalized()
-            self._canvas.set_selection_rect(rect)
+            rect = self._canvas.compute_constrained_rect(self._selection_origin, pos, shift, alt)
+            self._canvas.set_selection_rect(rect, kind="ellipse")
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             if self._selection_origin is not None:
-                from PySide6.QtCore import QRect
-                rect = QRect(self._selection_origin, pos).normalized()
+                rect = self._canvas.compute_constrained_rect(self._selection_origin, pos, shift, alt)
                 doc = self._controller.document
                 store = self._controller.data_store
                 if doc is not None and store is not None and rect.width() > 4 and rect.height() > 4:
@@ -1072,12 +1121,138 @@ class MainWindow(QMainWindow):
                             x=ix1, y=iy1, width=bw, height=bh,
                             kind="ellipse", mask_buffer_id=mask_bid,
                         )
-                        if hasattr(self._controller, "set_selection"):
-                            self._controller.set_selection(sel)  # type: ignore[attr-defined]
+                        self._controller.set_selection(sel)
                         self.statusBar().showMessage(f"Ellipse selection: {bw}×{bh}")
                     except Exception as exc:
                         self.statusBar().showMessage(f"Ellipse selection error: {exc}", 3000)
                 self._selection_origin = None
+
+    def _tool_color_selection_event(self, event_type: str, event: object) -> None:
+        """Magic Wand / Color selection: click pixel to select matching contiguous region."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QMouseEvent
+
+        if not isinstance(event, QMouseEvent):
+            return
+        if event_type != "press" or event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        doc = self._controller.document
+        if doc is None:
+            return
+        pos = event.position().toPoint()
+        ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
+        tolerance = 15
+        try:
+            values = self._sidebar.properties.get_values()
+            if "tolerance" in values:
+                tolerance = int(values["tolerance"])
+            elif "Tolerance" in values:
+                tolerance = int(values["Tolerance"])
+        except Exception:
+            pass
+
+        doc_result = self._controller.color_selection(ix, iy, tolerance=tolerance)
+        if doc_result is not None:
+            self.statusBar().showMessage(
+                f"Color selection created around ({ix}, {iy}) [Tolerance: {tolerance}]"
+            )
+            self._refresh_preview()
+
+    def _tool_shape_event(self, event_type: str, event: object) -> None:
+        """Shape tool: drag on canvas to draw vector/raster shape with Shift/Alt modifiers."""
+        from PySide6.QtCore import QRect, Qt
+        from PySide6.QtGui import QMouseEvent
+
+        if not isinstance(event, QMouseEvent):
+            return
+        pos = event.position().toPoint()
+        modifiers = event.modifiers()
+        shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+
+        if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
+            self._shape_origin = pos
+            preview_kind = "line" if self._active_tool_id == "shape_line" else "rectangle"
+            self._canvas.set_selection_rect(QRect(pos, pos), kind=preview_kind)
+        elif event_type == "move" and getattr(self, "_shape_origin", None) is not None:
+            if self._active_tool_id == "shape_line":
+                rect = QRect(self._shape_origin, pos).normalized()
+                self._canvas.set_selection_rect(rect, kind="line")
+            else:
+                rect = self._canvas.compute_constrained_rect(
+                    self._shape_origin, pos, shift, alt
+                )
+                self._canvas.set_selection_rect(rect, kind="rectangle")
+        elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
+            if getattr(self, "_shape_origin", None) is not None:
+                if self._active_tool_id == "shape_line":
+                    rect = QRect(self._shape_origin, pos).normalized()
+                else:
+                    rect = self._canvas.compute_constrained_rect(
+                        self._shape_origin, pos, shift, alt
+                    )
+                doc = self._controller.document
+                valid_drag = (
+                    max(rect.width(), rect.height()) > 2
+                    if self._active_tool_id == "shape_line"
+                    else rect.width() > 2 and rect.height() > 2
+                )
+                if doc is not None and valid_drag:
+                    image_rect = self._canvas.current_selection_image_rect(
+                        doc.image.width, doc.image.height
+                    )
+                    if self._active_tool_id == "shape_line":
+                        start = self._canvas.widget_to_image_pos(
+                            self._shape_origin, doc.image.width, doc.image.height
+                        )
+                        end = self._canvas.widget_to_image_pos(
+                            pos, doc.image.width, doc.image.height
+                        )
+                        image_rect = (
+                            min(start[0], end[0]),
+                            min(start[1], end[1]),
+                            max(1, abs(end[0] - start[0])),
+                            max(1, abs(end[1] - start[1])),
+                        )
+                    if image_rect is None:
+                        self._shape_origin = None
+                        self._canvas.set_selection_rect(None)
+                        return
+                    shape_type = {
+                        "shape_rectangle": "Rectangle",
+                        "shape_ellipse": "Ellipse",
+                        "shape_line": "Line",
+                        "shape_polygon": "Polygon",
+                    }.get(self._active_tool_id, "Rectangle")
+                    fill_color = self._tool_panel.background_rgba
+                    stroke_color = self._tool_panel.foreground_rgba
+                    stroke_width = 2
+                    try:
+                        vals = self._sidebar.properties.get_values()
+                        stroke_width = int(vals.get("stroke_width", 2))
+                    except Exception:
+                        pass
+
+                    res_doc = self._controller.draw_shape(
+                        shape_type,
+                        image_rect,
+                        fill_color_name=fill_color,
+                        stroke_color_name=stroke_color,
+                        stroke_width=stroke_width,
+                    )
+                    if res_doc is not None:
+                        active_shape_id = self._controller.active_layer_id
+                        selected_ids = (
+                            (active_shape_id,) if active_shape_id is not None else ()
+                        )
+                        self._show_document(
+                            res_doc,
+                            f"Drew {shape_type}",
+                            selected_ids=selected_ids,
+                        )
+                self._shape_origin = None
+                self._canvas.set_selection_rect(None)
 
     def _lasso_event(self, event_type: str, event: object) -> None:
         """Freehand lasso: accumulate mouse-move points → rasterise on release."""
@@ -1203,6 +1378,7 @@ class MainWindow(QMainWindow):
             else:
                 r = g = b = int(arr[iy, ix])
                 alpha = 255
+            self._tool_panel.set_foreground_color((r, g, b, alpha))
             self.statusBar().showMessage(
                 f"Eyedropper: ({ix},{iy})  R:{r} G:{g} B:{b} A:{alpha}", 4000
             )
@@ -1422,7 +1598,7 @@ class MainWindow(QMainWindow):
                 document = self._controller.set_layer_blend_mode(layer_ids[0], blend_mode)
                 label = f"Blend Mode: {blend_mode.title()}"
             elif locked is not None:
-                document = self._controller.set_layer_locked(layer_ids[0], locked)
+                document = self._controller.set_layers_locked(layer_ids, locked)
                 label = "Locked" if locked else "Unlocked"
             else:
                 return
@@ -1445,6 +1621,20 @@ class MainWindow(QMainWindow):
                 document = self._controller.add_layer()
                 label = "Added layer"
                 selected_ids = (document.layers[-1].id,)
+            elif action == "group":
+                document = self._controller.group_layers(layer_ids)
+                label = "Grouped selected layers"
+                selected_ids = (
+                    self._controller.active_layer_id,
+                ) if self._controller.active_layer_id is not None else ()
+            elif action == "ungroup":
+                if not layer_ids:
+                    return
+                document = self._controller.ungroup_layer(layer_ids[0])
+                label = "Ungrouped layers"
+                selected_ids = tuple(
+                    layer.id for layer in document.layers if layer.id in previous_ids
+                )
             elif action == "copy_selection":
                 self._create_layer_from_selection(cut=False)
                 return
@@ -1871,6 +2061,16 @@ class MainWindow(QMainWindow):
         history_label: str,
         selected_ids: tuple[object, ...] = (),
     ) -> None:
+        # The controller session is the authoritative source after a command.
+        # A command may return a view captured before a subsequent layer update;
+        # using that stale view here makes the canvas and Layers panel disagree.
+        current_document = self._controller.document
+        if (
+            current_document is not None
+            and current_document.id == document.id
+            and current_document.revision >= document.revision
+        ):
+            document = current_document
         if not selected_ids:
             selected_ids = self._sidebar.selected_layer_ids()
             if not selected_ids and document.layers:

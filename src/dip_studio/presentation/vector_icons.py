@@ -44,6 +44,10 @@ _QTAWESOME_NAMES = {
     "eyedropper": "mdi6.eyedropper",
     "text": "mdi6.format-text",
     "shape": "mdi6.shape-outline",
+    "shape_rectangle": "mdi6.rectangle-outline",
+    "shape_ellipse": "mdi6.ellipse-outline",
+    "shape_line": "mdi6.vector-line",
+    "shape_polygon": "mdi6.vector-polygon",
     "histogram": "mdi6.chart-histogram",
     "threshold": "mdi6.tune-vertical",
     "morphology": "mdi6.blur",
@@ -56,6 +60,8 @@ _QTAWESOME_NAMES = {
     "layer.lock": "mdi6.lock-outline",
     "layer.unlock": "mdi6.lock-open-outline",
     "layer.merge": "mdi6.call-merge",
+    "layer.group": "mdi6.folder-multiple-outline",
+    "layer.ungroup": "mdi6.folder-remove-outline",
     "layer.visible": "mdi6.eye-outline",
     "layer.hidden": "mdi6.eye-off-outline",
     "file.new": "fa5s.file",
@@ -115,6 +121,10 @@ def _vector_icon_for(name: str, color: str) -> QIcon:
         "eyedropper": _eyedropper,
         "text": _text,
         "shape": _shape,
+        "shape_rectangle": _shape,
+        "shape_ellipse": _selection,
+        "shape_line": _edge,
+        "shape_polygon": _lasso,
         "histogram": _edge,
         "threshold": _gradient,
         "morphology": _blur,
@@ -480,4 +490,3 @@ def _eye_off(p: QPainter, c: QColor) -> None:
     _eye(p, c)
     p.setPen(_pen(c, 3.5))
     p.drawLine(14, 46, 50, 18)
-

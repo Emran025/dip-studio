@@ -1,17 +1,20 @@
-﻿"""Application-facing editor orchestration for the first vertical slice."""
+"""Application-facing editor orchestration for the first vertical slice."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from dip_studio.application.commands import ApplyProcessing
+from dip_studio.application.commands import ApplyProcessing, ReplaceDocument
 from dip_studio.application.history import UndoRedoHistory
-from dip_studio.core.errors import PersistenceError
+from dip_studio.core.errors import PersistenceError, ProcessingError
 from dip_studio.application.layer_commands import (
     AddLayer,
     ChangeLayer,
     ChangeLayers,
+    ChangeLayersLocked,
     DuplicateLayer,
     MoveLayer,
     PasteLayers,
@@ -21,19 +24,46 @@ from dip_studio.application.layer_commands import (
 )
 from dip_studio.application.ports import ImageImporter, ProjectStore
 from dip_studio.application.session import DocumentSession
+from dip_studio.application.result_store import ProcessingResultStore
+from dip_studio.application.backend_capabilities import (
+    BackendCapability,
+    discover_backend_capabilities,
+)
 from dip_studio.application.tool_registry import (
     ToolDefinition,
     ToolRegistry,
     default_tool_registry,
 )
 from dip_studio.domain.factories import document_from_import, new_document
-from dip_studio.domain.model import ImageDocument, Layer, LayerId
+from dip_studio.domain.model import (
+    AppliedOperation,
+    ImageDocument,
+    Layer,
+    LayerId,
+    ShapeLayer,
+)
 from dip_studio.processing.contracts import ProcessingRequest
+from dip_studio.processing.contracts import ProcessingResult
 from dip_studio.processing.engine import ProcessingEngine
+from dip_studio.processing.plugins import PluginActivationFailure
 from dip_studio.rendering.ports import RenderEngine, RenderRequest
+from dip_studio.infrastructure.data_store import ImageDataStore
 
 if TYPE_CHECKING:
     from dip_studio.infrastructure.data_store import ImageDataStore
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessingJobSnapshot:
+    """Immutable state captured before a background processing job starts."""
+
+    document_id: DocumentId
+    document_revision: int
+    layer_id: LayerId
+    input_buffer_id: str
+    input_buffer_version: int
+    mask_versions: tuple[tuple[str, int], ...] = ()
+    selection_versions: tuple[tuple[str, int], ...] = ()
 
 
 class EditorController:
@@ -47,6 +77,8 @@ class EditorController:
         tool_registry: ToolRegistry | None = None,
         data_store: ImageDataStore | None = None,
         processing_engine: ProcessingEngine | None = None,  # type: ignore[type-arg]
+        result_store: ProcessingResultStore | None = None,
+        plugin_failures: tuple[PluginActivationFailure, ...] = (),
     ) -> None:
         self._renderer = renderer
         self._project_store = project_store
@@ -54,15 +86,23 @@ class EditorController:
         self._tool_registry = tool_registry or default_tool_registry()
         if data_store is None and image_importer is not None:
             data_store = getattr(image_importer, "_data_store", None)
-        elif data_store is not None and image_importer is not None and getattr(image_importer, "_data_store", None) is None:
-            image_importer._data_store = data_store
+        if data_store is None:
+            data_store = ImageDataStore()
+        if image_importer is not None:
+            if hasattr(image_importer, "set_data_store"):
+                image_importer.set_data_store(data_store)
+            else:
+                image_importer._data_store = data_store
         self._data_store = data_store
+        self._result_store = result_store or ProcessingResultStore()
+        self._plugin_failures = plugin_failures
         self._session = DocumentSession()
         self._sessions: dict[str, DocumentSession] = {}
         self._histories: dict[str, UndoRedoHistory] = {}
         self._clipboard: tuple[Layer, ...] = ()
         self._previews: dict[str, bytes] = {}
         self._active_tool_id: str = ""
+        self._active_layer_id: LayerId | None = None
         if processing_engine is not None:
             self._processing = processing_engine
         else:
@@ -78,6 +118,16 @@ class EditorController:
         return self._tool_registry.list()
 
     @property
+    def backend_capabilities(self) -> tuple[BackendCapability, ...]:
+        """Report optional backend availability for presentation and automation."""
+        return discover_backend_capabilities()
+
+    @property
+    def plugin_failures(self) -> tuple[PluginActivationFailure, ...]:
+        """Return plugin failures captured during composition."""
+        return self._plugin_failures
+
+    @property
     def data_store(self) -> ImageDataStore | None:
         return self._data_store
 
@@ -91,6 +141,12 @@ class EditorController:
         if tool_id and not any(t.id == tool_id for t in self._tool_registry.list()):
             raise KeyError(f"Tool not found: {tool_id}")
         self._active_tool_id = tool_id
+
+    def validate_tool_parameters(self, tool_id: str, values: Mapping[str, object]) -> None:
+        """Validate presentation-provided values against a registered tool schema."""
+        validator = getattr(self._tool_registry, "validate_parameters", None)
+        if validator is not None:
+            validator(tool_id, values)
 
     def create_document(self, name: str, width: int, height: int) -> ImageDocument:
         document = new_document(name, width, height)
@@ -139,10 +195,29 @@ class EditorController:
             raise KeyError("Document is not open")
         del self._sessions[key]
         self._histories.pop(key, None)
+        self._result_store.remove_document(document_id)
         if self._sessions:
             self._session = next(iter(self._sessions.values()))
         else:
             self._session = DocumentSession()
+
+    def store_processing_result(
+        self,
+        result_id: str,
+        result: ProcessingResult,
+        *,
+        document_id: object | None = None,
+    ) -> None:
+        """Store a typed non-pixel result for the selected document."""
+        target = self.document.id if document_id is None else document_id
+        self._result_store.put(target, result_id, result)
+
+    def processing_results(
+        self, *, document_id: object | None = None
+    ) -> dict[str, ProcessingResult]:
+        """Return a snapshot of typed results for a document."""
+        target = self.document.id if document_id is None else document_id
+        return dict(self._result_store.snapshot(target))
 
     def copy_layers(self, layer_ids: tuple[LayerId, ...]) -> int:
         document = self._session.document
@@ -173,6 +248,21 @@ class EditorController:
         saved = document.marked_saved()
         self._session.replace(saved)
         return saved
+
+    def save_document_snapshot(self, document: ImageDocument, path: Path) -> bool:
+        """Persist a captured document only if it is still current.
+
+        This is used by recovery/autosave workers. The caller captures the
+        immutable document on the UI thread; the worker only performs I/O when
+        the snapshot still matches the active revision.
+        """
+        if self._project_store is None:
+            raise RuntimeError("Project storage is not configured")
+        current = self.document
+        if current is None or current.id != document.id or current.revision != document.revision:
+            return False
+        self._project_store.save(document, path)
+        return True
 
     def export_image(self, path: Path, quality: int = 85) -> None:
         """Render the active document to a flat composite and save to *path*.
@@ -239,28 +329,28 @@ class EditorController:
     ) -> bytes | None:
         """Run a processing operation without mutating the document.
 
-        Returns preview bytes if the engine produced output, or None
-        if no processor is registered for *operation*.
+        Raises:
+            ProcessingError: if the document has no buffered target or the
+                operation fails.
         """
         document = self.document
         if document is None:
-            return None
+            raise ProcessingError("Cannot preview processing without a document")
         request = self._request(operation, parameters)
         # Get the first layer with a buffer_id
         layer = next(
             (la for la in document.layers if la.buffer_id is not None), None
         )
-        if layer is None or self._data_store is None:
-            return None
-        try:
-            result_buffer_id: str = self._processing.run(layer.buffer_id, request)
-        except (KeyError, Exception):
-            return None
+        if layer is None or self._data_store is None or layer.buffer_id is None:
+            raise ProcessingError("Cannot preview processing without a buffered layer")
+        result_buffer_id = self._processing.run(layer.buffer_id, request)
         active_buf_ids = {
             la.buffer_id for doc in self.open_documents for la in doc.layers if la.buffer_id is not None
         }
         if result_buffer_id in active_buf_ids:
-            return None  # stub returned input unchanged
+            raise ProcessingError(
+                f"Processor '{operation}' returned an existing buffer instead of a preview result"
+            )
         # Encode result as JPEG preview bytes
         try:
             from dip_studio.rendering.compositor import _encode_jpeg
@@ -269,15 +359,426 @@ class EditorController:
             if result_buffer_id not in active_buf_ids:
                 self._data_store.release(result_buffer_id)
             return _encode_jpeg(arr)
-        except Exception:
-            return None
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            if self._data_store.has(result_buffer_id):
+                self._data_store.release(result_buffer_id)
+            raise ProcessingError(f"Could not encode preview for '{operation}'") from exc
 
     def apply_processing(
         self, operation: str, parameters: dict[str, object]
     ) -> ImageDocument:
         request = self._request(operation, parameters)
+        # Target the active layer if one is tracked.
+        layer_id = self._active_layer_id
         self._history_for_active().execute(
-            ApplyProcessing(self._processing, request), self._session
+            ApplyProcessing(self._processing, request, layer_id=layer_id),
+            self._session,
+        )
+        self._previews.pop(str(self._session.document.id), None)
+        return self._session.document
+
+    def apply_processing_async(
+        self,
+        operation: str,
+        parameters: dict[str, object],
+        submit: Callable[..., Any],
+        *,
+        on_done: Callable[[ImageDocument], None] | None = None,
+        on_error: Callable[[Exception], None] | None = None,
+        on_stale: Callable[[], None] | None = None,
+        on_progress: Callable[[int], None] | None = None,
+    ) -> Any:
+        """Apply processing through an injected background-job boundary.
+
+        ``submit`` is deliberately a plain callable so the application layer
+        remains independent of Qt. It must accept a callback receiving
+        ``(cancellation_token, progress_reporter)`` and support the same
+        ``on_done``, ``on_error`` and ``on_progress`` keyword callbacks as the
+        presentation worker.
+        """
+        document = self.document
+        if document is None:
+            error = ProcessingError("Cannot apply processing without a document")
+            if on_error is not None:
+                on_error(error)
+            return None
+
+        layer = self._find_processing_layer(document)
+        if layer is None or layer.buffer_id is None or self._data_store is None:
+            error = ProcessingError(
+                f"Cannot apply '{operation}': no buffered target layer"
+            )
+            if on_error is not None:
+                on_error(error)
+            return None
+
+        request = self._request(operation, parameters)
+        captured_buffer_id = layer.buffer_id
+        snapshot = ProcessingJobSnapshot(
+            document_id=document.id,
+            document_revision=document.revision,
+            layer_id=layer.id,
+            input_buffer_id=captured_buffer_id,
+            input_buffer_version=self._data_store.version(captured_buffer_id),
+            mask_versions=tuple(
+                (mask.buffer_id, self._data_store.version(mask.buffer_id))
+                for mask in document.masks
+                if mask.buffer_id is not None and self._data_store.has(mask.buffer_id)
+            ),
+            selection_versions=tuple(
+                (selection.mask_buffer_id, self._data_store.version(selection.mask_buffer_id))
+                for selection in document.selections
+                if (
+                    selection.mask_buffer_id is not None
+                    and self._data_store.has(selection.mask_buffer_id)
+                )
+            ),
+        )
+
+        def run(token: Any, reporter: Any) -> str:
+            return self._processing.run(
+                captured_buffer_id,
+                request,
+                cancellation=token,
+                progress=reporter,
+                metadata={"preview": False, "document_id": str(snapshot.document_id)},
+            )
+
+        def commit(result_buffer_id: Any) -> None:
+            current = self.document
+            if (
+                current is None
+                or current.id != snapshot.document_id
+                or current.revision != snapshot.document_revision
+                or self._data_store is None
+                or not self._data_store.has(snapshot.input_buffer_id)
+                or self._data_store.version(snapshot.input_buffer_id)
+                != snapshot.input_buffer_version
+                or any(
+                    not self._data_store.has(buffer_id)
+                    or self._data_store.version(buffer_id) != version
+                    for buffer_id, version in (
+                        snapshot.mask_versions + snapshot.selection_versions
+                    )
+                )
+            ):
+                if isinstance(result_buffer_id, str) and self._data_store is not None:
+                    self._data_store.release(result_buffer_id)
+                if on_stale is not None:
+                    on_stale()
+                return
+            if not isinstance(result_buffer_id, str) or not result_buffer_id:
+                error = ProcessingError(
+                    f"Processor '{operation}' returned an invalid buffer"
+                )
+                if on_error is not None:
+                    on_error(error)
+                return
+            if result_buffer_id == captured_buffer_id:
+                error = ProcessingError(
+                    f"Processor '{operation}' produced no new result buffer"
+                )
+                if on_error is not None:
+                    on_error(error)
+                return
+            try:
+                target = next(layer for layer in current.layers if layer.id == snapshot.layer_id)
+                new_layer = target.changed(buffer_id=result_buffer_id)
+                new_document = current.changed(
+                    layers=tuple(
+                        new_layer if layer.id == snapshot.layer_id else layer
+                        for layer in current.layers
+                    ),
+                    operations=current.operations
+                    + (AppliedOperation(operation, request.parameters),),
+                )
+                self._history_for_active().execute(
+                    ReplaceDocument(new_document), self._session
+                )
+            except Exception as exc:
+                if self._data_store.has(result_buffer_id):
+                    self._data_store.release(result_buffer_id)
+                if on_error is not None:
+                    on_error(exc)
+                return
+            self._previews.pop(str(snapshot.document_id), None)
+            if on_done is not None:
+                on_done(self._session.document)
+
+        return submit(
+            run,
+            on_done=commit,
+            on_error=on_error,
+            on_progress=on_progress,
+        )
+
+    def _find_processing_layer(self, document: ImageDocument) -> Layer | None:
+        if self._active_layer_id is not None:
+            return next(
+                (
+                    layer
+                    for layer in document.layers
+                    if layer.id == self._active_layer_id
+                    and layer.buffer_id is not None
+                ),
+                None,
+            )
+        return next(
+            (layer for layer in document.layers if layer.buffer_id is not None),
+            None,
+        )
+
+    # ------------------------------------------------------------------
+    # Active-layer tracking
+    # ------------------------------------------------------------------
+
+    @property
+    def active_layer_id(self) -> "LayerId | None":
+        """The ID of the currently selected layer, or None when unset."""
+        return self._active_layer_id
+
+    def set_active_layer(self, layer_id: "LayerId | None") -> None:
+        """Record which layer the user has selected in the layer panel."""
+        self._active_layer_id = layer_id
+
+    @property
+    def active_selection(self) -> object | None:
+        doc = self.document
+        return doc.selections[-1] if doc and doc.selections else None
+
+    def set_selection(self, selection: object | None) -> "ImageDocument | None":
+        """Set or update active selection rect / mask on current document."""
+        doc = self.document
+        if doc is None:
+            return None
+        selections = (selection,) if selection is not None else ()
+        updated = doc.changed(selections=selections)
+        self._session.replace(updated)
+        return self._session.document
+
+    def draw_shape(
+        self,
+        shape_type: str,
+        rect: tuple[int, int, int, int],
+        fill_color_name: str | tuple[int, int, int, int] = "Red",
+        stroke_color_name: str | tuple[int, int, int, int] = "Black",
+        stroke_width: int = 2,
+    ) -> "ImageDocument | None":
+        """Draw a vector/raster shape on the active layer."""
+        from dip_studio.infrastructure.shape_commands import DrawShape
+
+        doc = self.document
+        if doc is None or self._data_store is None:
+            return None
+        layer_id = self._active_layer_id
+        if layer_id is None:
+            if not doc.layers:
+                return None
+            layer_id = doc.layers[-1].id
+        command = DrawShape(
+            self._data_store,
+            layer_id,
+            shape_type,
+            rect,
+            fill_color_name,
+            stroke_color_name,
+            stroke_width,
+        )
+        self._history_for_active().execute(command, self._session)
+        if command.created_layer_id is not None:
+            self._active_layer_id = command.created_layer_id
+        self._previews.pop(str(self._session.document.id), None)
+        return self._session.document
+
+    def color_selection(
+        self, x: int, y: int, tolerance: int = 15
+    ) -> "ImageDocument | None":
+        """Magic Wand: select connected pixels with matching color at (x, y)."""
+        doc = self.document
+        store = self.data_store
+        if doc is None or store is None:
+            return None
+        layer = next((la for la in doc.layers if la.buffer_id is not None), None)
+        if layer is None or layer.buffer_id is None:
+            return None
+        try:
+            from dip_studio.application.presentation_bridge import rasterise_color_selection
+
+            arr = store.get(layer.buffer_id)
+            h, w = arr.shape[:2]
+            mask_binary = rasterise_color_selection(arr, x, y, tolerance=tolerance)
+            mask_bid = store.allocate(mask_binary)
+
+            sel = self.make_selection(
+                x=0, y=0, width=w, height=h, kind="color_selection", mask_buffer_id=mask_bid
+            )
+            return self.set_selection(sel)
+        except Exception:
+            return None
+
+    def translate_layer(
+        self, layer_id: "LayerId", dx: float, dy: float
+    ) -> "ImageDocument":
+        """Translate the specified layer position by (dx, dy) pixels."""
+        from dip_studio.application.layer_commands import TranslateLayer
+
+        self._history_for_active().execute(
+            TranslateLayer(layer_id, dx, dy), self._session
+        )
+        self._previews.pop(str(self._session.document.id), None)
+        return self._session.document
+
+    def resize_shape_layer(
+        self, layer_id: "LayerId", rect: tuple[int, int, int, int]
+    ) -> "ImageDocument":
+        """Resize a vector shape while preserving its editable layer identity."""
+        from dip_studio.infrastructure.shape_commands import ResizeShapeLayer
+
+        self._history_for_active().execute(
+            ResizeShapeLayer(layer_id, rect), self._session
+        )
+        self._previews.pop(str(self._session.document.id), None)
+        return self._session.document
+
+    def hit_test_layer(self, x: int, y: int) -> "Layer | None":
+        """Return the top-most visible layer containing pixel content at (x, y)."""
+        doc = self.document
+        store = self.data_store
+        if doc is None:
+            return None
+        # Test layers top-to-bottom
+        for layer in reversed(doc.layers):
+            if not layer.visible:
+                continue
+            if isinstance(layer, ShapeLayer):
+                x0, y0, width, height = (
+                    int(round(value)) for value in layer.vertices[:4]
+                )
+                transform = layer.transform
+                tx = int(transform.tx) if transform else 0
+                ty = int(transform.ty) if transform else 0
+                sx = transform.sx if transform else 1.0
+                sy = transform.sy if transform else 1.0
+                right = x0 + tx + int(width * sx)
+                bottom = y0 + ty + int(height * sy)
+                if min(x0 + tx, right) <= x <= max(x0 + tx, right) and min(y0 + ty, bottom) <= y <= max(y0 + ty, bottom):
+                    return layer
+            elif layer.buffer_id is not None and store is not None:
+                try:
+                    arr = store.get(layer.buffer_id)
+                    h, w = arr.shape[:2]
+                    t = layer.transform
+                    tx = t.tx if t else 0.0
+                    ty = t.ty if t else 0.0
+                    local_x = int(x - tx)
+                    local_y = int(y - ty)
+                    if 0 <= local_x < w and 0 <= local_y < h:
+                        if arr.ndim == 3 and arr.shape[2] == 4:
+                            if arr[local_y, local_x, 3] > 0:
+                                return layer
+                        else:
+                            return layer
+                except Exception:
+                    pass
+            else:
+                if 0 <= x < doc.image.width and 0 <= y < doc.image.height:
+                    return layer
+        return None
+
+    @staticmethod
+    def make_selection(**kwargs: object) -> object:
+        from dip_studio.domain.model import SelectionRect
+        return SelectionRect(**kwargs)  # type: ignore[arg-type]
+
+    # ------------------------------------------------------------------
+    # Paint / draw tools (Phase 5)
+    # ------------------------------------------------------------------
+
+    def paint_stroke(
+        self,
+        points: "list[tuple[int, int]]",
+        color: "tuple[int, int, int, int]",
+        size: int = 10,
+        hardness: float = 0.8,
+        opacity: float = 1.0,
+    ) -> "ImageDocument | None":
+        """Paint a brush stroke into the active layer buffer.
+
+        Returns the updated document or None if no paintable layer is found.
+        """
+        from dip_studio.infrastructure.paint_commands import PaintStroke
+
+        document = self.document
+        if document is None or self._data_store is None:
+            return None
+        layer_id = self._active_layer_id
+        if layer_id is None:
+            # Fall back to first buffered layer.
+            layer = next((la for la in document.layers if la.buffer_id is not None), None)
+            if layer is None:
+                return None
+            layer_id = layer.id
+        self._history_for_active().execute(
+            PaintStroke(self._data_store, layer_id, points, color, size, hardness, opacity),
+            self._session,
+        )
+        self._previews.pop(str(self._session.document.id), None)
+        return self._session.document
+
+    def eraser_stroke(
+        self,
+        points: "list[tuple[int, int]]",
+        size: int = 20,
+        hardness: float = 0.8,
+        opacity: float = 1.0,
+    ) -> "ImageDocument | None":
+        """Erase pixels from the active layer (reduces alpha).
+
+        Returns the updated document or None if no erasable layer is found.
+        """
+        from dip_studio.infrastructure.paint_commands import EraserStroke
+
+        document = self.document
+        if document is None or self._data_store is None:
+            return None
+        layer_id = self._active_layer_id
+        if layer_id is None:
+            layer = next((la for la in document.layers if la.buffer_id is not None), None)
+            if layer is None:
+                return None
+            layer_id = layer.id
+        self._history_for_active().execute(
+            EraserStroke(self._data_store, layer_id, points, size, hardness, opacity),
+            self._session,
+        )
+        self._previews.pop(str(self._session.document.id), None)
+        return self._session.document
+
+    def flood_fill(
+        self,
+        x: int,
+        y: int,
+        color: "tuple[int, int, int, int]",
+        tolerance: int = 15,
+    ) -> "ImageDocument | None":
+        """BFS flood-fill into the active layer at pixel (x, y).
+
+        Returns the updated document or None if no fillable layer is found.
+        """
+        from dip_studio.infrastructure.paint_commands import FloodFill
+
+        document = self.document
+        if document is None or self._data_store is None:
+            return None
+        layer_id = self._active_layer_id
+        if layer_id is None:
+            layer = next((la for la in document.layers if la.buffer_id is not None), None)
+            if layer is None:
+                return None
+            layer_id = layer.id
+        self._history_for_active().execute(
+            FloodFill(self._data_store, layer_id, x, y, color, tolerance),
+            self._session,
         )
         self._previews.pop(str(self._session.document.id), None)
         return self._session.document
@@ -392,10 +893,9 @@ class EditorController:
         try:
             import io
             from PIL import Image as PilImage
-            import numpy as np
-
             with PilImage.open(io.BytesIO(preview)) as image:
-                array = np.array(image.convert("RGBA"), dtype=np.uint8)
+                from dip_studio.infrastructure.preview_decoder import decode_rgba
+                array = decode_rgba(image)
             restored_id = self._data_store.allocate(array)
         except (OSError, ValueError, TypeError) as error:
             raise PersistenceError(
@@ -451,6 +951,31 @@ class EditorController:
         self._history_for_active().execute(
             SetLayerLocked(layer_id, locked), self._session
         )
+        return self._session.document
+
+    def set_layers_locked(
+        self, layer_ids: tuple[LayerId, ...], locked: bool
+    ) -> ImageDocument:
+        self._history_for_active().execute(
+            ChangeLayersLocked(layer_ids, locked), self._session
+        )
+        return self._session.document
+
+    def group_layers(self, layer_ids: tuple[LayerId, ...]) -> ImageDocument:
+        from dip_studio.application.layer_commands import GroupLayers
+
+        command = GroupLayers(layer_ids)
+        self._history_for_active().execute(command, self._session)
+        self._active_layer_id = command.group_id
+        return self._session.document
+
+    def ungroup_layer(self, layer_id: LayerId) -> ImageDocument:
+        from dip_studio.application.layer_commands import UngroupLayer
+
+        self._history_for_active().execute(
+            UngroupLayer(layer_id), self._session
+        )
+        self._active_layer_id = None
         return self._session.document
 
     def merge_down(self, layer_id: LayerId) -> ImageDocument:

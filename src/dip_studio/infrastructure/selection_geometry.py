@@ -81,6 +81,50 @@ def rasterise_polygon(
     return _scanline_fill(w, h, vertices)
 
 
+def rasterise_color_selection(
+    arr: np.ndarray,
+    seed_x: int,
+    seed_y: int,
+    tolerance: int = 15,
+) -> np.ndarray:
+    """Return uint8 mask (H, W) where 255 = contiguous region matching seed pixel color within tolerance."""
+    h, w = arr.shape[:2]
+    if h == 0 or w == 0:
+        return np.zeros((h, w), dtype=np.uint8)
+
+    seed_x = max(0, min(seed_x, w - 1))
+    seed_y = max(0, min(seed_y, h - 1))
+
+    try:
+        import cv2
+        if arr.ndim == 2:
+            bgr = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+        elif arr.shape[2] == 4:
+            bgr = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+        else:
+            bgr = arr.copy()
+
+        mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
+        seed = (seed_x, seed_y)
+        tol = (tolerance, tolerance, tolerance)
+        cv2.floodFill(
+            bgr,
+            mask,
+            seed,
+            (255, 255, 255),
+            tol,
+            tol,
+            flags=4 | (255 << 8) | cv2.FLOODFILL_MASK_ONLY,
+        )
+        return (mask[1:-1, 1:-1] == 255).astype(np.uint8) * 255
+    except Exception:
+        target_color = arr[seed_y, seed_x].astype(np.float32)
+        diff = np.abs(arr.astype(np.float32) - target_color)
+        if diff.ndim == 3:
+            diff = np.max(diff[..., :3], axis=-1)
+        return (diff <= tolerance).astype(np.uint8) * 255
+
+
 # ---------------------------------------------------------------------------
 # Internal scanline fill (even-odd rule)
 # ---------------------------------------------------------------------------

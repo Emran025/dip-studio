@@ -136,7 +136,7 @@ def default_shortcut_bindings() -> tuple[ShortcutBinding, ...]:
             ShortcutBinding("tool.zoom", "Z", "Tool", 20),
             ShortcutBinding("tool.eyedropper", "I", "Tool", 20),
             ShortcutBinding("tool.text", "T", "Tool", 20),
-            ShortcutBinding("tool.shape", "U", "Tool", 20),
+            ShortcutBinding("tool.shape_rectangle", "U", "Tool", 20),
             ShortcutBinding("canvas.pan", "Space", "Canvas", 30),
             ShortcutBinding("canvas.zoom_wheel", "Ctrl+Wheel", "Canvas", 30),
         )

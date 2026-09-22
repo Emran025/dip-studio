@@ -5,7 +5,14 @@ from uuid import uuid4
 
 from dip_studio.application.commands import Command
 from dip_studio.application.session import DocumentSession
-from dip_studio.domain.model import ImageDocument, Layer, LayerId, Transform, _UNSET
+from dip_studio.domain.model import (
+    GroupLayer,
+    ImageDocument,
+    Layer,
+    LayerId,
+    Transform,
+    _UNSET,
+)
 
 
 class ChangeLayer(Command):
@@ -133,6 +140,35 @@ class ChangeLayers(Command):
     def undo(self, session: DocumentSession) -> None:
         if self._previous is None:
             raise RuntimeError("Change layers command has not executed")
+        session.replace(self._previous)
+
+
+class ChangeLayersLocked(Command):
+    label = "Lock Layers"
+
+    def __init__(self, layer_ids: tuple[LayerId, ...], locked: bool) -> None:
+        self._layer_ids = layer_ids
+        self._locked = locked
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        selected = set(self._layer_ids)
+        if not selected or not selected.issubset({layer.id for layer in document.layers}):
+            raise KeyError("Layer does not exist")
+        self._previous = document
+        session.replace(
+            document.changed(
+                layers=tuple(
+                    layer.changed(locked=self._locked) if layer.id in selected else layer
+                    for layer in document.layers
+                )
+            )
+        )
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Lock layers command has not executed")
         session.replace(self._previous)
 
 
@@ -367,6 +403,67 @@ class SetLayerLocked(Command):
     def undo(self, session: DocumentSession) -> None:
         if self._previous is None:
             raise RuntimeError("Command has not executed")
+        session.replace(self._previous)
+
+
+class GroupLayers(Command):
+    label = "Group Layers"
+
+    def __init__(self, layer_ids: tuple[LayerId, ...], name: str = "Group") -> None:
+        self._layer_ids = layer_ids
+        self._name = name
+        self._group_id: LayerId | None = None
+        self._previous: ImageDocument | None = None
+
+    @property
+    def group_id(self) -> LayerId | None:
+        return self._group_id
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        selected = set(self._layer_ids)
+        if len(selected) < 1:
+            raise ValueError("Select at least one layer to group")
+        if not selected.issubset({layer.id for layer in document.layers}):
+            raise KeyError("Layer does not exist")
+        children = tuple(layer.id for layer in document.layers if layer.id in selected)
+        group = GroupLayer(
+            id=LayerId(uuid4()),
+            name=self._name,
+            children=children,
+        )
+        self._group_id = group.id
+        self._previous = document
+        session.replace(document.changed(layers=document.layers + (group,)))
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Group command has not executed")
+        session.replace(self._previous)
+
+
+class UngroupLayer(Command):
+    label = "Ungroup Layers"
+
+    def __init__(self, group_id: LayerId) -> None:
+        self._group_id = group_id
+        self._previous: ImageDocument | None = None
+
+    def execute(self, session: DocumentSession) -> None:
+        document = session.document
+        group = next((layer for layer in document.layers if layer.id == self._group_id), None)
+        if not isinstance(group, GroupLayer):
+            raise ValueError("Selected layer is not a group")
+        self._previous = document
+        session.replace(
+            document.changed(
+                layers=tuple(layer for layer in document.layers if layer.id != group.id)
+            )
+        )
+
+    def undo(self, session: DocumentSession) -> None:
+        if self._previous is None:
+            raise RuntimeError("Ungroup command has not executed")
         session.replace(self._previous)
 
 

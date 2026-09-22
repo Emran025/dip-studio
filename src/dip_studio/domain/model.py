@@ -145,6 +145,10 @@ class ShapeLayer(Layer):
         Layer.__post_init__(self)  # explicit call — avoids frozen+slots super() bug
         if self.stroke_width < 0:
             raise ValidationError("Stroke width must be non-negative")
+        if self.shape_type not in ("rectangle", "ellipse", "line", "polygon"):
+            raise ValidationError(f"Unsupported shape type: {self.shape_type}")
+        if self.buffer_id is None and (len(self.vertices) < 4 or len(self.vertices) % 2 != 0):
+            raise ValidationError("Shape geometry must contain coordinate pairs")
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,7 +309,7 @@ class SelectionRect:
             raise ValidationError("Selection dimensions must be positive")
         if self.feather < 0:
             raise ValidationError("Feather radius must be non-negative")
-        if self.kind not in ("rectangle", "ellipse", "lasso", "polygon"):
+        if self.kind not in ("rectangle", "ellipse", "lasso", "polygon", "color_selection", "color"):
             raise ValidationError("Selection kind must be rectangle, ellipse, lasso, or polygon")
 
 

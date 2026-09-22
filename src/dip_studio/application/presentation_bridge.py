@@ -51,3 +51,8 @@ def rasterise_lasso(width: int, height: int, points: list[tuple[int, int]]):
 def rasterise_polygon(width: int, height: int, points: list[tuple[int, int]]):
     from dip_studio.infrastructure.selection_geometry import rasterise_polygon as rasterise
     return rasterise(width, height, points)
+
+
+def rasterise_color_selection(arr: object, seed_x: int, seed_y: int, tolerance: int = 15):
+    from dip_studio.infrastructure.selection_geometry import rasterise_color_selection as rasterise
+    return rasterise(arr, seed_x, seed_y, tolerance)

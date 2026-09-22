@@ -47,17 +47,16 @@ Processor
 ```
 
 Selections يجب أن تدعم:
-- rectangle
-- ellipse
-- lasso
-- polygon
-- color-based
-- edge-based (future feature)
+- rectangle (مع مفتاح `Shift` لنسبة 1:1 مربع ومفتاح `Alt` للمركز)
+- ellipse (مع مفتاح `Shift` لنسبة 1:1 دائرة كاملة ومفتاح `Alt` للمركز)
+- lasso (تحديد حر بالأيدي)
+- polygon (تحديد مضلع بالنقر)
+- color-based / Magic Wand (تحديد الألوان المتصلة حسب السماحية tolerance)
 - object-based (future feature)
 - add/subtract/intersect/invert
 - feather
 - expand/contract
-- copy/paste/cut
+- copy/paste/cut (متاحان كـ Layer via Copy / Layer via Cut)
 
 ## 4. TextLayer
 النص يجب أن يكون **First-Class Layer** وليس صورة يتم rasterize لها مباشرة.

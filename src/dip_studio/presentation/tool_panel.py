@@ -15,6 +15,9 @@ from dip_studio.application.tool_registry import ToolDefinition
 from dip_studio.presentation.vector_icons import icon_for
 
 
+from dip_studio.presentation.color_swatch import DualColorSwatchWidget
+
+
 class ToolPanel(QWidget):
     """Displays tool groups and emits the selected tool name."""
 
@@ -32,7 +35,11 @@ class ToolPanel(QWidget):
         ("Retouch", ("clone",)),
         ("Navigation", ("hand", "zoom")),
         ("Sampling", ("eyedropper",)),
-        ("Vector", ("text", "shape")),
+        # Keep shape drawing directly discoverable in the toolbar.  A
+        # multi-tool group renders as one icon with a small popup arrow, which
+        # previously hid the shape tool behind the text icon.
+        ("Drawing", ("shape_rectangle", "shape_ellipse", "shape_line", "shape_polygon")),
+        ("Vector", ("text",)),
         ("Analysis", ("histogram", "threshold", "morphology", "segment")),
     )
 
@@ -76,10 +83,26 @@ class ToolPanel(QWidget):
             self._tool_group.addButton(button)
             layout.addWidget(container, row, 0, Qt.AlignmentFlag.AlignHCenter)
             row += 1
+
+        # Photoshop-style Dual Color Swatch
+        self.color_swatch = DualColorSwatchWidget(self)
         layout.setRowStretch(row, 1)
+        row += 1
+        layout.addWidget(self.color_swatch, row, 0, Qt.AlignmentFlag.AlignHCenter)
 
         if tools:
             self.select_tool(tools[0].id, emit=False)
+
+    @property
+    def foreground_rgba(self) -> tuple[int, int, int, int]:
+        return self.color_swatch.foreground_rgba
+
+    @property
+    def background_rgba(self) -> tuple[int, int, int, int]:
+        return self.color_swatch.background_rgba
+
+    def set_foreground_color(self, color: tuple[int, int, int, int]) -> None:
+        self.color_swatch.set_foreground_color(color)
 
     def select_tool(self, id_or_name: str, *, emit: bool = True) -> None:
         tool = self._tools_by_id.get(id_or_name) or self._tools_by_name.get(id_or_name)

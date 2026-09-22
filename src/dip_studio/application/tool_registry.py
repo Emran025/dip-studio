@@ -260,6 +260,9 @@ def default_tool_registry() -> InMemoryToolRegistry:
                 "Selection",
                 "Select pixels by color",
                 None,
+                parameters=(
+                    ToolParameter("tolerance", "Tolerance", "integer", 15, 0, 255),
+                ),
             ),
             ToolDefinition(
                 "crop",
@@ -344,7 +347,10 @@ def default_tool_registry() -> InMemoryToolRegistry:
             ToolDefinition("zoom", "Zoom", "Navigation", "Zoom the canvas", "Z"),
             ToolDefinition("eyedropper", "Eyedropper", "Sampling", "Sample a color", "I"),
             ToolDefinition("text", "Text", "Vector", "Create text", "T"),
-            ToolDefinition("shape", "Shape", "Vector", "Create a shape", "U"),
+            ToolDefinition("shape_rectangle", "Rectangle", "Drawing", "Draw a rectangle", "U"),
+            ToolDefinition("shape_ellipse", "Ellipse", "Drawing", "Draw an ellipse or circle", None),
+            ToolDefinition("shape_line", "Line", "Drawing", "Draw a line", None),
+            ToolDefinition("shape_polygon", "Polygon", "Drawing", "Draw a regular polygon", None),
             ToolDefinition(
                 "histogram",
                 "Histogram",
