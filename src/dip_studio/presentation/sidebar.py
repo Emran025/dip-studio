@@ -403,22 +403,26 @@ class RightSidebar(QWidget):
             self.layer_blend_mode.blockSignals(False)
             self.layer_opacity.blockSignals(False)
 
-    def _visibility_changed(self, item: QListWidgetItem) -> None:
+    def _visibility_changed(self, item: QTreeWidgetItem) -> None:
+        # Capture all data before the callback refreshes the tree. The main
+        # window rebuilds the layer items after changing visibility, which
+        # invalidates this Qt object immediately.
+        layer_id = item.data(Qt.ItemDataRole.UserRole)
+        visible = item.checkState() == Qt.CheckState.Checked
+        selected = tuple(
+            selected_item.data(Qt.ItemDataRole.UserRole)
+            for selected_item in self.layers.selectedItems()
+        )
         item.setIcon(
             1,
             icon_for(
-                "layer.visible"
-                if item.checkState() == Qt.CheckState.Checked
-                else "layer.hidden"
+                "layer.visible" if visible else "layer.hidden"
             ),
         )
         if self._layer_callback is not None:
-            selected = tuple(
-                it.data(Qt.ItemDataRole.UserRole) for it in self.layers.selectedItems()
-            )
             self._layer_callback(
-                selected or (item.data(Qt.ItemDataRole.UserRole),),
-                item.checkState() == Qt.CheckState.Checked,
+                selected or (layer_id,),
+                visible,
                 None,
                 None,
                 None,
