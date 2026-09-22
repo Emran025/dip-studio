@@ -5,7 +5,15 @@ from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPen, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QImage,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from PySide6.QtWidgets import QWidget
 
 
@@ -34,6 +42,7 @@ class CanvasView(QWidget):
         self._drag_start: QPoint | None = None
         self._space_pan = False
         self._selection_rect: QRect | None = None
+        self._selection_points: tuple[QPoint, ...] = ()
         self._is_crop_mode = False
         self._crop_handle: str | None = None
         self._crop_drag_origin: QPoint | None = None
@@ -108,6 +117,27 @@ class CanvasView(QWidget):
         """Set or clear the on-canvas visual selection / crop rectangle."""
         self._selection_rect = rect
         self._selection_kind = kind
+        if rect is None:
+            self._selection_points = ()
+        self.update()
+
+    def set_selection_points(
+        self, points: tuple[QPoint, ...], kind: str = "lasso"
+    ) -> None:
+        """Show a freehand or polygon selection path while it is being drawn."""
+        self._selection_points = points
+        self._selection_kind = kind
+        if points:
+            xs = [point.x() for point in points]
+            ys = [point.y() for point in points]
+            self._selection_rect = QRect(
+                min(xs),
+                min(ys),
+                max(1, max(xs) - min(xs)),
+                max(1, max(ys) - min(ys)),
+            )
+        else:
+            self._selection_rect = None
         self.update()
 
     @staticmethod
@@ -334,6 +364,18 @@ class CanvasView(QWidget):
         ix = max(0, min(ix, img_w - 1))
         iy = max(0, min(iy, img_h - 1))
         return (ix, iy)
+
+    def image_to_widget_pos(self, x: int, y: int, img_w: int, img_h: int) -> QPoint:
+        """Convert document-space coordinates to widget-space coordinates."""
+        image_rect = self._image_display_rect()
+        if image_rect is None:
+            return QPoint()
+        scale_x = image_rect.width() / max(1, img_w)
+        scale_y = image_rect.height() / max(1, img_h)
+        return QPoint(
+            round(image_rect.left() + x * scale_x),
+            round(image_rect.top() + y * scale_y),
+        )
 
     def show_preview(self, data: bytes) -> None:
         image = QImage()
@@ -685,6 +727,14 @@ class CanvasView(QWidget):
                         self._selection_rect.topLeft(),
                         self._selection_rect.bottomRight(),
                     )
+                elif kind in {"lasso", "polygon"} and len(self._selection_points) >= 2:
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.drawPolyline(QPolygonF(self._selection_points))
+                    if kind == "polygon" and len(self._selection_points) >= 3:
+                        painter.drawLine(
+                            self._selection_points[-1],
+                            self._selection_points[0],
+                        )
                 else:
                     painter.drawRect(self._selection_rect)
 

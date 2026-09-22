@@ -314,13 +314,21 @@ class MainWindow(QMainWindow):
         state = self._focus_state(widget)
         if state.input_field or state.modal_dialog:
             return super().eventFilter(watched, event)
-        if (
-            self._active_tool_id == "crop"
-            and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
-        ):
-            self._commit_crop_from_selection()
-            event.accept()
-            return True
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._active_tool_id == "crop":
+                self._commit_crop_from_selection()
+                event.accept()
+                return True
+            if self._active_tool_id in {
+                "selection",
+                "ellipse_selection",
+                "lasso",
+                "polygon_selection",
+                "color_selection",
+            }:
+                self._create_layer_from_selection(cut=False)
+                event.accept()
+                return True
         if self._canvas.hasFocus() and event.key() in (
             Qt.Key.Key_Plus,
             Qt.Key.Key_Equal,
@@ -1271,6 +1279,7 @@ class MainWindow(QMainWindow):
         if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
             self._lasso_points: list[tuple[int, int]] = []
             self._selection_origin = pos
+            self._canvas.set_selection_rect(QRect(pos, pos), kind="lasso")
         elif event_type == "move" and self._selection_origin is not None:
             doc = self._controller.document
             if doc is not None:
@@ -1278,6 +1287,11 @@ class MainWindow(QMainWindow):
                 if not hasattr(self, "_lasso_points"):
                     self._lasso_points = []
                 self._lasso_points.append((ix, iy))
+                widget_points = tuple(
+                    self._canvas.image_to_widget_pos(x, y, doc.image.width, doc.image.height)
+                    for x, y in self._lasso_points
+                )
+                self._canvas.set_selection_points(widget_points, kind="lasso")
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             if self._selection_origin is not None:
                 doc = self._controller.document
@@ -1304,6 +1318,7 @@ class MainWindow(QMainWindow):
                         self.statusBar().showMessage(f"Lasso error: {exc}", 3000)
                 self._selection_origin = None
                 self._lasso_points = []
+                self._canvas.set_selection_rect(None)
 
     def _polygon_event(self, event_type: str, event: object) -> None:
         """Click-by-click polygon: each left-click adds a vertex; double-click closes.
@@ -1324,6 +1339,11 @@ class MainWindow(QMainWindow):
             if not hasattr(self, "_poly_points"):
                 self._poly_points: list[tuple[int, int]] = []
             self._poly_points.append((ix, iy))
+            widget_points = tuple(
+                self._canvas.image_to_widget_pos(x, y, doc.image.width, doc.image.height)
+                for x, y in self._poly_points
+            )
+            self._canvas.set_selection_points(widget_points, kind="polygon")
             self.statusBar().showMessage(f"Polygon: {len(self._poly_points)} vertices (double-click to close)")
         elif event_type == "double_click":
             pts = getattr(self, "_poly_points", [])
@@ -1349,6 +1369,7 @@ class MainWindow(QMainWindow):
                 except Exception as exc:
                     self.statusBar().showMessage(f"Polygon error: {exc}", 3000)
             self._poly_points = []
+            self._canvas.set_selection_rect(None)
 
     def _tool_eyedropper_event(self, event_type: str, event: object) -> None:
         """Eyedropper: click to sample pixel color at cursor position."""
