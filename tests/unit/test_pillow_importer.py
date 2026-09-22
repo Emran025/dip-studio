@@ -100,3 +100,11 @@ class TestImageFormatRegistry:
         registry = ImageFormatRegistry(data_store=store)
         with pytest.raises(PersistenceError):
             registry.import_image(unknown_path)
+
+    def test_registry_reports_supported_formats(self) -> None:
+        registry = ImageFormatRegistry(data_store=ImageDataStore())
+        formats = dict(registry.supported_formats)
+        assert formats["png"] == "PNG"
+        assert formats["jpg"] == "JPEG"
+        assert formats["webp"] == "WebP"
+        assert formats["gif"] == "GIF"

@@ -1,6 +1,11 @@
 import pytest
 
-from dip_studio.application.tool_registry import default_tool_registry
+from dip_studio.application.tool_registry import (
+    InMemoryToolRegistry,
+    ToolDefinition,
+    ToolParameter,
+    default_tool_registry,
+)
 
 
 def test_default_tool_registry_discovers_tools_and_parameters() -> None:
@@ -28,3 +33,20 @@ def test_default_tool_registry_discovers_tools_and_parameters() -> None:
 def test_tool_registry_rejects_unknown_tool() -> None:
     with pytest.raises(KeyError, match="Unknown tool"):
         default_tool_registry().get("missing")
+
+
+def test_tool_parameter_schema_supports_step_description_and_validation() -> None:
+    parameter = ToolParameter(
+        "threshold", "Threshold", "number", 10, 0, 100, (),
+        step=0.5, description="Detection threshold",
+        validation=lambda value: float(value) == 10,
+    )
+    registry = InMemoryToolRegistry((
+        ToolDefinition("custom", "Custom", "Plugin", "Custom tool", parameters=(parameter,)),
+    ))
+
+    assert parameter.step == 0.5
+    assert parameter.description == "Detection threshold"
+    registry.validate_parameters("custom", {"threshold": 10})
+    with pytest.raises(ValueError, match="Invalid parameters"):
+        registry.validate_parameters("custom", {"threshold": 11})

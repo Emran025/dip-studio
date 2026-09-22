@@ -86,3 +86,61 @@ def test_tool_parameters_panel_set_values() -> None:
     assert vals["Y"] == 35
     assert vals["Width"] == 120
     assert vals["Height"] == 90
+
+
+def test_crop_document_resets_layer_transform() -> None:
+    from dip_studio.domain.model import Transform
+    store = ImageDataStore()
+    arr = np.ones((200, 300, 4), dtype=np.uint8) * 100
+    buf_id = store.allocate(arr)
+
+    controller = EditorController(BlankDocumentRenderer(), data_store=store)
+    doc = controller.create_document("TransformTest", 300, 200)
+    layer = Layer(id=doc.layers[0].id, name="Transformed", buffer_id=buf_id, transform=Transform(tx=15.0, ty=15.0))
+    controller._session.replace(doc.changed(layers=(layer,)))
+
+    cropped_doc = controller.crop_document(20, 20, 100, 100)
+    assert cropped_doc.layers[0].transform is None
+
+
+def test_main_window_crop_enter_and_undo_view_fitting() -> None:
+    from PySide6.QtWidgets import QApplication
+    from dip_studio.presentation.main_window import MainWindow
+    from dip_studio.rendering.compositor import NumpyDocumentRenderer
+
+    app = QApplication.instance() or QApplication([])
+    store = ImageDataStore()
+    renderer = NumpyDocumentRenderer(None)
+    controller = EditorController(renderer=renderer, data_store=store)
+    renderer._controller = controller
+
+    window = MainWindow(controller=controller)
+    arr = np.ones((200, 300, 4), dtype=np.uint8) * 200
+    buf_id = store.allocate(arr)
+
+    doc = controller.create_document("FlowTest", 300, 200)
+    controller._session.replace(
+        doc.changed(layers=(Layer(id=doc.layers[0].id, name="Base", buffer_id=buf_id),))
+    )
+    window._show_document(controller.document, "Loaded")
+    window._tool_panel.select_tool("crop")
+
+    # Set selection box and commit
+    window._canvas.set_crop_rect_from_image(50, 50, 100, 100, 300, 200)
+    window._commit_crop_from_selection()
+
+    assert controller.document.image.width == 100
+    assert controller.document.image.height == 100
+    assert window._canvas._is_crop_mode is True
+    assert window._canvas._selection_rect is not None
+
+    # Undo crop
+    window._undo()
+    assert controller.document.image.width == 300
+    assert controller.document.image.height == 200
+    assert window._canvas._selection_rect is not None
+    # Selection rect and display rect should be positive and aligned
+    disp = window._canvas._image_display_rect()
+    assert disp is not None
+    assert disp.left() >= 0 and disp.top() >= 0
+

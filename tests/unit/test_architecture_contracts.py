@@ -9,7 +9,7 @@ from dip_studio.core.cancellation import MutableCancellationToken
 from dip_studio.core.errors import CancellationError, PersistenceError, ValidationError
 from dip_studio.core.result import Result
 from dip_studio.domain.factories import new_document
-from dip_studio.domain.model import ImageSpec, Layer
+from dip_studio.domain.model import GroupLayer, ImageSpec, Layer, LayerId
 from dip_studio.infrastructure.project_store import JsonProjectStore
 from dip_studio.presentation.theme import DARK, LIGHT
 
@@ -38,6 +38,33 @@ def test_session_and_command_history_round_trip() -> None:
     assert session.document.name == "first"
     history.redo(session)
     assert session.document.name == "second"
+
+
+def test_layer_tree_validates_group_structure_and_document_undo_redo() -> None:
+    base = Layer(LayerId("00000000-0000-0000-0000-000000000001"), "base")
+    child = Layer(LayerId("00000000-0000-0000-0000-000000000002"), "child")
+    group = GroupLayer(
+        LayerId("00000000-0000-0000-0000-000000000003"),
+        "group",
+        children=(child.id,),
+    )
+    document = new_document("tree", 10, 10).changed(layers=(base, child, group))
+    assert document.layer_tree.top_level()[0].name == "base"
+
+    with pytest.raises(ValidationError):
+        GroupLayer(
+            LayerId("00000000-0000-0000-0000-000000000004"),
+            "bad",
+            children=(child.id, child.id),
+        )
+
+    session = DocumentSession(document)
+    history = UndoRedoHistory()
+    history.execute(ReplaceDocument(document.changed(name="after")), session)
+    history.undo(session)
+    assert session.document.name == "tree"
+    history.redo(session)
+    assert session.document.name == "after"
 
 
 def test_session_rejects_different_identity() -> None:
