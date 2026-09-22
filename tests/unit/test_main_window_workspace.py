@@ -13,6 +13,7 @@ from PySide6.QtCore import QByteArray
 from PySide6.QtWidgets import QApplication
 
 from dip_studio.presentation.canvas_view import CanvasView
+from dip_studio.presentation import main_window as main_window_module
 from dip_studio.presentation.main_window import MainWindow
 
 
@@ -92,3 +93,61 @@ def test_refresh_preview_surfaces_failures_in_status_bar(main_window: MainWindow
     main_window._refresh_preview()
 
     assert "Preview render failed: bad preview" in main_window.statusBar().currentMessage()
+
+
+def test_new_project_keeps_existing_documents_open(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = main_window._controller.create_document("first", 20, 20)
+    main_window._show_document(first, "Created first")
+    confirm = MagicMock(side_effect=AssertionError("opening must not close the active document"))
+    main_window._confirm_document_transition = confirm
+
+    class AcceptedNewProjectDialog:
+        def __init__(self, _parent: MainWindow) -> None:
+            pass
+
+        def exec(self) -> int:
+            return int(QDialog.DialogCode.Accepted)
+
+        def values(self) -> SimpleNamespace:
+            return SimpleNamespace(name="second", width=30, height=30)
+
+    from PySide6.QtWidgets import QDialog
+
+    monkeypatch.setattr(main_window_module, "NewProjectDialog", AcceptedNewProjectDialog)
+    main_window._show_new_project()
+
+    assert [document.name for document in main_window._controller.open_documents] == [
+        "first",
+        "second",
+    ]
+    assert main_window._controller.document.name == "second"
+    confirm.assert_not_called()
+    confirm.side_effect = None
+    confirm.return_value = True
+
+
+def test_open_image_does_not_request_closing_active_document(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = main_window._controller.create_document("first", 20, 20)
+    second = SimpleNamespace(name="second", layers=(), image=SimpleNamespace(width=30, height=30))
+    main_window._controller.open_image = MagicMock(return_value=second)
+    main_window._show_document = MagicMock()
+    confirm = MagicMock(side_effect=AssertionError("opening must not close the active document"))
+    main_window._confirm_document_transition = confirm
+
+    class OpenImageDialog:
+        @staticmethod
+        def getOpenFileName(*_args: object) -> tuple[str, str]:
+            return "second.png", ""
+
+    monkeypatch.setattr(main_window_module, "QFileDialog", OpenImageDialog)
+    main_window._open_image()
+
+    main_window._controller.open_image.assert_called_once()
+    assert main_window._controller.open_documents == (first,)
+    confirm.assert_not_called()
+    confirm.side_effect = None
+    confirm.return_value = True

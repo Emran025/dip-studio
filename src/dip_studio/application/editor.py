@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -222,7 +222,7 @@ class EditorController:
     def copy_layers(self, layer_ids: tuple[LayerId, ...]) -> int:
         document = self._session.document
         selected = set(layer_ids)
-        self._clipboard = tuple(
+        self._clipboard = self._snapshot_clipboard_layers(
             layer for layer in document.layers if layer.id in selected
         )
         return len(self._clipboard)
@@ -282,13 +282,29 @@ class EditorController:
             self._history_for_active().execute(
                 ChangeLayer(layer.id, buffer_id=source_buffer), self._session
             )
-        self._clipboard = (
-            layer.changed(
-                name=f"{layer.name} selection",
-                buffer_id=selection_buffer,
-                locked=False,
-            ),
+        self._clipboard = self._snapshot_clipboard_layers(
+            (
+                layer.changed(
+                    name=f"{layer.name} selection",
+                    buffer_id=selection_buffer,
+                    locked=False,
+                ),
+            )
         )
+
+    def _snapshot_clipboard_layers(
+        self, layers: Iterable[Layer]
+    ) -> tuple[Layer, ...]:
+        """Detach clipboard layers from the source document's pixel buffers."""
+        if self._data_store is None:
+            raise RuntimeError("Image data storage is not configured")
+        snapshot: list[Layer] = []
+        for layer in layers:
+            buffer_id = layer.buffer_id
+            if buffer_id is not None:
+                buffer_id = self._data_store.copy_on_write(buffer_id)
+            snapshot.append(replace(layer, buffer_id=buffer_id, locked=False))
+        return tuple(snapshot)
 
     def save_project(self, path: Path) -> ImageDocument:
         if self._project_store is None:

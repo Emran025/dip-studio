@@ -684,12 +684,11 @@ class MainWindow(QMainWindow):
         return True
 
     def _create_blank_document(self) -> None:
-        if not self._confirm_document_transition():
-            return
         document = self._controller.create_document("Untitled", 800, 600)
         self._show_document(document, "Created blank document")
 
     def _show_new_project(self) -> None:
+        """Create a document in a new session without closing the active one."""
         dialog = NewProjectDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -2155,6 +2154,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Preview failed: {error}", 4000)
 
     def _open_project(self) -> None:
+        """Open a project as a new session without closing the active one."""
         filename, _ = QFileDialog.getOpenFileName(
             self, "Open project", "", "DIP projects (*.dip);;All files (*)"
         )
@@ -2191,8 +2191,7 @@ class MainWindow(QMainWindow):
             return False
 
     def _open_image(self) -> None:
-        if not self._confirm_document_transition():
-            return
+        """Open an image as a new session without closing the active one."""
         filename, _ = QFileDialog.getOpenFileName(
             self, "Open image", "", "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp *.ppm);;All files (*)"
         )

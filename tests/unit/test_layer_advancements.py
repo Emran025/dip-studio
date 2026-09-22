@@ -62,6 +62,24 @@ class TestLayerFromSelection:
         pasted_arr = store.get(pasted.layers[-1].buffer_id)  # type: ignore[arg-type]
         assert (pasted_arr[2:7, 2:7, 0] == 100).all()
 
+    def test_clipboard_snapshot_can_be_pasted_into_another_open_document(self) -> None:
+        controller, store = _setup_controller()
+        source = controller.document
+        assert source is not None
+        source_layer = source.layers[0]
+
+        controller.copy_selection_to_clipboard(source_layer.id, (2, 2, 5, 5))
+        target = controller.create_document("TargetDoc", 20, 20)
+        pasted = controller.paste_layers()
+
+        assert controller.document is not None
+        assert controller.document.id == target.id
+        pasted_layer = pasted.layers[-1]
+        pasted_arr = store.get(pasted_layer.buffer_id)  # type: ignore[arg-type]
+        assert pasted_layer.id != source_layer.id
+        assert (pasted_arr[2:7, 2:7, 0] == 100).all()
+        assert (pasted_arr[:2, :, 3] == 0).all()
+
     def test_masked_selection_does_not_copy_or_cut_the_bounding_box_background(self) -> None:
         controller, store = _setup_controller()
         source = controller.document.layers[0]  # type: ignore[union-attr]
