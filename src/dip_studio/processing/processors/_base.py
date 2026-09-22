@@ -46,10 +46,12 @@ class BaseProcessor:
     def validate(self, request: ProcessingRequest) -> None:
         pass
     
-    def process(self, buffer_id: str, request: ProcessingRequest) -> str:
+    def process(self, buffer_id: str, request: ProcessingRequest) -> str | object:
         arr = self._store.get(buffer_id)
         result = self._apply(arr, request)
-        return self._store.allocate(result)
+        if isinstance(result, np.ndarray):
+            return self._store.allocate(result)
+        return result
     
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
         raise NotImplementedError

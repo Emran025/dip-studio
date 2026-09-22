@@ -29,6 +29,7 @@ import importlib
 import importlib.util
 import logging
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from dip_studio.processing.contracts import Processor
@@ -36,6 +37,15 @@ from dip_studio.processing.contracts import Processor
 _log = logging.getLogger(__name__)
 
 API_VERSION = 1  # current plugin ABI version
+
+
+@dataclass(frozen=True, slots=True)
+class PluginActivationFailure:
+    """A plugin failure that can be reported without stopping application startup."""
+
+    plugin_id: str
+    stage: str
+    message: str
 
 
 @runtime_checkable
@@ -59,10 +69,21 @@ class PluginRegistry:
 
     def __init__(self) -> None:
         self._plugins: dict[str, ProcessorPlugin] = {}
+        self._failures: list[PluginActivationFailure] = []
 
     def register(self, plugin: ProcessorPlugin) -> None:
         """Register *plugin*, replacing any prior registration with the same id."""
         if plugin.api_version != API_VERSION:
+            self._failures.append(
+                PluginActivationFailure(
+                    plugin_id=getattr(plugin, "plugin_id", "<unknown>"),
+                    stage="registration",
+                    message=(
+                        f"Plugin targets API v{plugin.api_version}; "
+                        f"host supports v{API_VERSION}"
+                    ),
+                )
+            )
             _log.warning(
                 "Plugin '%s' targets API v%d but host is v%d — skipping",
                 plugin.plugin_id,
@@ -81,6 +102,13 @@ class PluginRegistry:
     def plugin_ids(self) -> tuple[str, ...]:
         return tuple(self._plugins)
 
+    @property
+    def failures(self) -> tuple[PluginActivationFailure, ...]:
+        return tuple(self._failures)
+
+    def record_failure(self, plugin_id: str, stage: str, message: str) -> None:
+        self._failures.append(PluginActivationFailure(plugin_id, stage, message))
+
     def activate_all(
         self,
         processing_engine: object,
@@ -93,26 +121,49 @@ class PluginRegistry:
             tool_registry:     optional ``ToolRegistry`` instance with a ``register`` method.
         """
         for plugin in self._plugins.values():
-            self._activate_one(plugin, processing_engine, tool_registry)
+            self._activate_one(plugin, processing_engine, tool_registry, self._failures)
 
     @staticmethod
     def _activate_one(
         plugin: ProcessorPlugin,
         processing_engine: object,
         tool_registry: object | None,
+        failures: list[PluginActivationFailure],
     ) -> None:
-        for processor in plugin.processors():
+        try:
+            processors = plugin.processors()
+        except Exception as exc:
+            failures.append(
+                PluginActivationFailure(plugin.plugin_id, "processor_discovery", str(exc))
+            )
+            _log.exception("Failed to discover processors from plugin '%s'", plugin.plugin_id)
+            processors = ()
+        for processor in processors:
             try:
                 processing_engine.register(processor)  # type: ignore[union-attr]
                 _log.debug("Registered processor '%s' from '%s'", processor.operation, plugin.plugin_id)
-            except Exception:
+            except Exception as exc:
+                failures.append(
+                    PluginActivationFailure(plugin.plugin_id, "processor_registration", str(exc))
+                )
                 _log.exception("Failed to register processor from plugin '%s'", plugin.plugin_id)
 
         if tool_registry is not None and isinstance(plugin, FullPlugin):
-            for tool_def in plugin.tool_definitions():
+            try:
+                tool_definitions = plugin.tool_definitions()
+            except Exception as exc:
+                failures.append(
+                    PluginActivationFailure(plugin.plugin_id, "tool_discovery", str(exc))
+                )
+                _log.exception("Failed to discover tools from plugin '%s'", plugin.plugin_id)
+                tool_definitions = ()
+            for tool_def in tool_definitions:
                 try:
                     tool_registry.register(tool_def)  # type: ignore[union-attr]
-                except Exception:
+                except Exception as exc:
+                    failures.append(
+                        PluginActivationFailure(plugin.plugin_id, "tool_registration", str(exc))
+                    )
                     _log.exception("Failed to register tool from plugin '%s'", plugin.plugin_id)
 
 
@@ -147,7 +198,8 @@ class PluginLoader:
         """
         try:
             mod = importlib.import_module(module_name)
-        except ImportError:
+        except Exception as exc:
+            self._registry.record_failure(module_name, "module_import", str(exc))
             _log.warning("Could not import plugin module: %s", module_name)
             return False
         return self._activate_module(mod, module_name)
@@ -159,7 +211,8 @@ class PluginLoader:
         mod = importlib.util.module_from_spec(spec)
         try:
             spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        except Exception:
+        except Exception as exc:
+            self._registry.record_failure(str(path), "module_import", str(exc))
             _log.exception("Error loading plugin from %s", path)
             return False
         return self._activate_module(mod, str(path))
@@ -167,9 +220,13 @@ class PluginLoader:
     def _activate_module(self, mod: object, source: str) -> bool:
         plugin = getattr(mod, self.PLUGIN_ATTR, None)
         if plugin is None:
+            self._registry.record_failure(source, "plugin_discovery", "Missing PLUGIN attribute")
             _log.debug("No '%s' attribute in %s — skipping", self.PLUGIN_ATTR, source)
             return False
         if not isinstance(plugin, ProcessorPlugin):
+            self._registry.record_failure(
+                source, "plugin_discovery", "PLUGIN does not satisfy ProcessorPlugin"
+            )
             _log.warning("'%s' in %s does not satisfy ProcessorPlugin protocol", self.PLUGIN_ATTR, source)
             return False
         self._registry.register(plugin)
