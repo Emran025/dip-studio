@@ -21,6 +21,14 @@ class ProcessingError(DipStudioError):
     """A processing operation failed."""
 
 
+class OptionalBackendError(ProcessingError):
+    """A processor requires an unavailable optional backend."""
+
+
+class RenderingError(DipStudioError):
+    """A document could not be rendered from its layer data."""
+
+
 class CancellationError(DipStudioError):
     """A cooperative operation was cancelled."""
 
