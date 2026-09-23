@@ -12,10 +12,8 @@ from PySide6.QtWidgets import (
 )
 
 from dip_studio.application.tool_registry import ToolDefinition
-from dip_studio.presentation.vector_icons import icon_for
-
-
 from dip_studio.presentation.color_swatch import DualColorSwatchWidget
+from dip_studio.presentation.vector_icons import icon_for
 
 
 class ToolPanel(QWidget):
@@ -45,6 +43,14 @@ class ToolPanel(QWidget):
         ("Drawing", ("shape_rectangle", "shape_ellipse", "shape_line", "shape_polygon")),
         ("Vector", ("text",)),
         ("Analysis", ("histogram", "threshold", "morphology", "segment")),
+        (
+            "Segmentation",
+            (
+                "watershed", "region_growing", "contour_extract",
+                "hu_moments", "connected_components", "grabcut", "active_contours",
+            ),
+        ),
+        ("Detection", ("hough_circles", "hough_lines")),
     )
 
     def __init__(self, tools: tuple[ToolDefinition, ...], parent: QWidget | None = None) -> None:

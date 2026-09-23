@@ -258,6 +258,72 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
                 ToolParameter("lightness_offset", "Lightness", "number", 0.0, -100.0, 100.0),
             ),
         ),
+        ToolDefinition(
+            "watershed", "Watershed", "Segmentation", "Split touching regions", None,
+            parameters=(
+                ToolParameter("min_distance", "Minimum Distance", "integer", 10, 1, 100),
+                ToolParameter("threshold", "Threshold", "integer", 0, 0, 255),
+            ),
+        ),
+        ToolDefinition(
+            "region_growing", "Region Growing", "Segmentation", "Grow a region from a seed", None,
+            parameters=(
+                ToolParameter("seed_x", "Seed X", "integer", 0, 0, 10000),
+                ToolParameter("seed_y", "Seed Y", "integer", 0, 0, 10000),
+                ToolParameter("tolerance", "Tolerance", "integer", 15, 0, 255),
+            ),
+        ),
+        ToolDefinition(
+            "contour_extract", "Contour Extract", "Segmentation", "Extract object contours", None,
+            parameters=(
+                ToolParameter("threshold", "Threshold", "integer", 128, 0, 255),
+                ToolParameter("color_r", "Contour Red", "integer", 0, 0, 255),
+                ToolParameter("color_g", "Contour Green", "integer", 255, 0, 255),
+                ToolParameter("color_b", "Contour Blue", "integer", 0, 0, 255),
+            ),
+        ),
+        ToolDefinition(
+            "hu_moments", "Hu Moments", "Segmentation", "Describe shape invariants", None,
+        ),
+        ToolDefinition(
+            "connected_components", "Connected Components", "Segmentation",
+            "Label connected regions", None,
+            parameters=(ToolParameter("threshold", "Threshold", "integer", 128, 0, 255),),
+        ),
+        ToolDefinition(
+            "grabcut", "GrabCut", "Segmentation", "Extract foreground from a rectangle", None,
+            parameters=(ToolParameter("margin", "Margin", "number", 0.1, 0.01, 0.49),),
+        ),
+        ToolDefinition(
+            "active_contours", "Active Contours", "Segmentation",
+            "Fit a snake to image boundaries", None,
+            parameters=(
+                ToolParameter("alpha", "Elasticity", "number", 0.015, 0.001, 1.0),
+                ToolParameter("beta", "Rigidity", "number", 10.0, 0.0, 100.0),
+                ToolParameter("gamma", "Step Size", "number", 0.001, 0.0001, 1.0),
+                ToolParameter("max_iter", "Iterations", "integer", 2500, 10, 10000),
+                ToolParameter("init_radius", "Initial Radius", "integer", 0, 0, 10000),
+            ),
+        ),
+        ToolDefinition(
+            "hough_circles", "Hough Circles", "Detection", "Detect circular objects", None,
+            parameters=(
+                ToolParameter("dp", "Accumulator Ratio", "number", 1.0, 0.1, 10.0),
+                ToolParameter("min_dist", "Minimum Distance", "number", 20.0, 1.0, 1000.0),
+                ToolParameter("param1", "Edge Threshold", "number", 100.0, 1.0, 500.0),
+                ToolParameter("param2", "Detection Threshold", "number", 30.0, 1.0, 500.0),
+                ToolParameter("min_radius", "Minimum Radius", "integer", 0, 0, 1000),
+                ToolParameter("max_radius", "Maximum Radius", "integer", 0, 0, 1000),
+            ),
+        ),
+        ToolDefinition(
+            "hough_lines", "Hough Lines", "Detection", "Detect straight line segments", None,
+            parameters=(
+                ToolParameter("threshold", "Accumulator Threshold", "integer", 80, 1, 1000),
+                ToolParameter("min_length", "Minimum Length", "number", 50.0, 1.0, 5000.0),
+                ToolParameter("max_gap", "Maximum Gap", "number", 10.0, 0.0, 1000.0),
+            ),
+        ),
     )
 
 
