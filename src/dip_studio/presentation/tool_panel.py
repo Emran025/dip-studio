@@ -50,7 +50,7 @@ class ToolPanel(QWidget):
                 "hu_moments", "connected_components", "grabcut", "active_contours",
             ),
         ),
-        ("Detection", ("hough_circles", "hough_lines")),
+        ("Detection", ("template_match", "hough_circles", "hough_lines")),
     )
 
     def __init__(self, tools: tuple[ToolDefinition, ...], parent: QWidget | None = None) -> None:

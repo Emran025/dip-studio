@@ -1,16 +1,18 @@
 """Unit tests verifying filter menu action signal handling and layer properties panel behavior."""
 
 import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import pytest
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from dip_studio.presentation.main_window import MainWindow
 from dip_studio.application.editor import EditorController
 from dip_studio.application.tool_registry import default_tool_registry, processing_tool_definitions
 from dip_studio.infrastructure.data_store import ImageDataStore
+from dip_studio.presentation.dialogs import ParameterDefinition, ToolParametersPanel
+from dip_studio.presentation.main_window import MainWindow
 from dip_studio.rendering.compositor import NumpyDocumentRenderer
 
 
@@ -106,3 +108,24 @@ def test_editing_layer_properties_in_sidebar_updates_layer(main_window: MainWind
     assert updated_layer.name == "Renamed Layer"
     assert updated_layer.opacity == pytest.approx(0.5)
     assert updated_layer.blend_mode == "multiply"
+
+
+def test_tool_parameters_panel_can_replace_schema_repeatedly():
+    """Changing filters repeatedly must not reuse a deleted actions widget."""
+    panel = ToolParametersPanel()
+    schema = (ParameterDefinition("Radius", "integer", 3, 1, 99),)
+
+    panel.set_schema(schema, show_actions=True)
+    panel.set_schema(schema, show_actions=True)
+    panel.set_schema((), show_actions=False)
+    QApplication.instance().processEvents()
+
+    panel.set_schema(schema, show_actions=True)
+    assert panel._actions is not None
+
+
+def test_number_parameters_keep_small_processing_values() -> None:
+    panel = ToolParametersPanel()
+    panel.set_schema((ParameterDefinition("Step", "number", 0.001, 0.0001, 1.0),))
+
+    assert panel.values()["Step"] == pytest.approx(0.001)

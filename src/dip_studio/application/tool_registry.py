@@ -25,6 +25,7 @@ class ToolParameter:
     step: float | None = None
     description: str = ""
     validation: Callable[[object], bool] | None = None
+    read_only: bool = False
 
     def validate(self, value: object) -> bool:
         """Validate a value against the declared schema without coercing it."""
@@ -322,6 +323,21 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
                 ToolParameter("threshold", "Accumulator Threshold", "integer", 80, 1, 1000),
                 ToolParameter("min_length", "Minimum Length", "number", 50.0, 1.0, 5000.0),
                 ToolParameter("max_gap", "Maximum Gap", "number", 10.0, 0.0, 1000.0),
+            ),
+        ),
+        ToolDefinition(
+            "template_match", "Template Match", "Detection",
+            "Find the selected region in the active image", None,
+            parameters=(
+                ToolParameter(
+                    "template_buffer_id", "Template", "text", "",
+                    read_only=True,
+                    description="Uses the current canvas selection as the template.",
+                ),
+                ToolParameter(
+                    "method", "Method", "choice", "TM_CCOEFF_NORMED",
+                    choices=("TM_CCOEFF_NORMED", "TM_SQDIFF_NORMED"),
+                ),
             ),
         ),
     )

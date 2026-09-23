@@ -24,7 +24,7 @@ from dip_studio.rendering.compositor import NumpyDocumentRenderer
 PARAMETERIZED_FILTERS = tuple(
     definition.id
     for definition in processing_tool_definitions()
-    if definition.parameters
+    if definition.parameters and definition.id != "template_match"
 )
 QUICK_FILTERS = tuple(
     definition.id
@@ -129,3 +129,28 @@ def test_quick_filter_action_updates_real_layer(
     if operation == "negative":
         # The sample generator brightens every second pixel before applying the filter.
         assert np.array_equal(result[0, 0], np.array([200, 140, 40], dtype=np.uint8))
+
+
+def test_template_match_uses_active_selection_as_template(
+    filter_window: tuple[MainWindow, QApplication],
+) -> None:
+    window, app = filter_window
+    controller = window._controller
+    document = controller.document
+    assert document is not None
+    before_buffer_id = document.layers[0].buffer_id
+    assert before_buffer_id is not None
+
+    controller.set_selection(controller.make_selection(x=16, y=12, width=16, height=16))
+    window._select_tool("template_match")
+    values = window._sidebar.properties.values()
+    assert values["template_buffer_id"] == ""
+
+    window._apply_parameters(values)
+    window._processing_worker.wait_for_done(5000)
+    app.processEvents()
+
+    after = controller.document
+    assert after is not None
+    assert after.layers[0].buffer_id != before_buffer_id
+    assert after.operations[-1].operation == "template_match"

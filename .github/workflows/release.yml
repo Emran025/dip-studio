@@ -1,0 +1,98 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install application and test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,gui,vision]"
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest --no-cov
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: dip-studio-windows
+            archive: DIP-Studio-windows.zip
+          - os: macos-latest
+            artifact: dip-studio-macos
+            archive: DIP-Studio-macos.zip
+          - os: ubuntu-latest
+            artifact: dip-studio-linux
+            archive: DIP-Studio-linux.tar.gz
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install packaged application dependencies
+        run: python -m pip install --upgrade pip && python -m pip install ".[gui,vision]" pyinstaller
+      - name: Build executable
+        shell: bash
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name DIP-Studio
+          --collect-all cv2
+          --collect-all skimage
+          src/dip_studio/presentation/app.py
+      - name: Smoke-test packaged executable (Linux)
+        if: runner.os == 'Linux'
+        run: timeout 15s env QT_QPA_PLATFORM=offscreen ./dist/DIP-Studio || test $? -eq 124
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/DIP-Studio.exe -DestinationPath "${{ matrix.archive }}"
+      - name: Package artifact (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/DIP-Studio "${{ matrix.archive }}"
+      - name: Package artifact (Linux)
+        if: runner.os == 'Linux'
+        run: tar -czf "${{ matrix.archive }}" -C dist DIP-Studio
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+      - name: Publish tagged release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.archive }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

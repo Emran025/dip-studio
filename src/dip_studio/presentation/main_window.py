@@ -44,7 +44,7 @@ from dip_studio.application.shortcut_registry import (
     default_shortcut_registry,
 )
 from dip_studio.application.tool_registry import ToolDefinition
-from dip_studio.core.errors import CancellationError
+from dip_studio.core.errors import CancellationError, OptionalBackendError
 from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.presentation.background_worker import BackgroundWorker
 from dip_studio.presentation.dialogs import (
@@ -886,11 +886,16 @@ class MainWindow(QMainWindow):
                     ParameterDefinition(
                         parameter.label, parameter.kind, parameter.default,
                         parameter.minimum, parameter.maximum, parameter.choices, parameter.id,
-                        step=parameter.step,
+                        read_only=parameter.read_only, step=parameter.step,
                     )
                     for parameter in tool.parameters
                 )
                 self._sidebar.properties.set_schema(schema, show_actions=True)
+                self._sidebar.select_panel("Properties")
+            elif tool.category in {"Filter", "Analysis", "Segmentation", "Detection"}:
+                self._is_editing_layer_properties = False
+                self._current_properties_layer_id = None
+                self._sidebar.properties.set_schema((), show_actions=True)
                 self._sidebar.select_panel("Properties")
             else:
                 doc = self._controller.document
@@ -2159,6 +2164,15 @@ class MainWindow(QMainWindow):
     def _preview_parameters(self, values: dict[str, object]) -> None:
         tool = self._selected_tool()
         if tool is not None:
+            values = dict(values)
+            if tool.id == "template_match" and not values.get("template_buffer_id"):
+                template_id = self._template_buffer_from_selection()
+                if template_id is None:
+                    self.statusBar().showMessage(
+                        "Template Match requires a selected region on the canvas.", 5000
+                    )
+                    return
+                values["template_buffer_id"] = template_id
             try:
                 self._controller.validate_tool_parameters(tool.id, values)
                 preview_data = self._controller.preview_processing(tool.id, values)
@@ -2176,6 +2190,15 @@ class MainWindow(QMainWindow):
     def _apply_parameters(self, values: dict[str, object]) -> None:
         tool = self._selected_tool()
         if tool is not None:
+            values = dict(values)
+            if tool.id == "template_match" and not values.get("template_buffer_id"):
+                template_id = self._template_buffer_from_selection()
+                if template_id is None:
+                    self.statusBar().showMessage(
+                        "Template Match requires a selected region on the canvas.", 5000
+                    )
+                    return
+                values["template_buffer_id"] = template_id
             try:
                 self._controller.validate_tool_parameters(tool.id, values)
             except ValueError as error:
@@ -2227,6 +2250,23 @@ class MainWindow(QMainWindow):
             except (KeyError, ValueError, RuntimeError) as error:
                 QMessageBox.critical(self, "Apply failed", str(error))
 
+    def _template_buffer_from_selection(self) -> str | None:
+        """Create a temporary template buffer from the active canvas selection."""
+        document = self._controller.document
+        store = self._controller.data_store
+        rect = self._active_selection_rect(document)
+        selected = self._selected_layer_ids()
+        if document is None or store is None or rect is None or not selected:
+            return None
+        layer = next((item for item in document.layers if item.id == selected[0]), None)
+        buffer_id = getattr(layer, "buffer_id", None)
+        if layer is None or buffer_id is None:
+            return None
+        x, y, width, height = rect
+        return store.crop_buffer(
+            buffer_id, x, y, width, height, document.image.width, document.image.height
+        )
+
     def _on_async_processing_done(self, document: DocumentView, tool_name: str) -> None:
         self._processing_token = None
         self._sidebar.add_history(f"Applied parameters: {tool_name}")
@@ -2238,6 +2278,9 @@ class MainWindow(QMainWindow):
         self._processing_token = None
         if isinstance(error, CancellationError):
             self.statusBar().showMessage("Processing cancelled", 3000)
+            return
+        if isinstance(error, OptionalBackendError):
+            self.statusBar().showMessage(str(error), 7000)
             return
         QMessageBox.critical(self, "Apply failed", str(error))
 

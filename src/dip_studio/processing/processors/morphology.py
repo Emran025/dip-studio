@@ -51,42 +51,30 @@ def _get_kernel(request: ProcessingRequest) -> np.ndarray:
 
 def _numpy_erode(arr: np.ndarray, ksize: int) -> np.ndarray:
     """Pure-NumPy morphological erosion (sliding minimum over rectangular SE)."""
+    from numpy.lib.stride_tricks import sliding_window_view
+
     pad = ksize // 2
-    if arr.ndim == 3:
-        result = np.empty_like(arr)
-        for c in range(arr.shape[2]):
-            ch = arr[:, :, c]
-            padded = np.pad(ch, pad, mode="edge")
-            for i in range(arr.shape[0]):
-                for j in range(arr.shape[1]):
-                    result[i, j, c] = padded[i:i + ksize, j:j + ksize].min()
-        return result
-    padded = np.pad(arr, pad, mode="edge")
-    result = np.empty_like(arr)
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            result[i, j] = padded[i:i + ksize, j:j + ksize].min()
-    return result
+    padded = np.pad(
+        arr,
+        ((pad, pad), (pad, pad)) + ((0, 0),) * (arr.ndim - 2),
+        mode="edge",
+    )
+    windows = sliding_window_view(padded, (ksize, ksize), axis=(0, 1))
+    return windows.min(axis=(-2, -1)).astype(arr.dtype, copy=False)
 
 
 def _numpy_dilate(arr: np.ndarray, ksize: int) -> np.ndarray:
     """Pure-NumPy morphological dilation (sliding maximum over rectangular SE)."""
+    from numpy.lib.stride_tricks import sliding_window_view
+
     pad = ksize // 2
-    if arr.ndim == 3:
-        result = np.empty_like(arr)
-        for c in range(arr.shape[2]):
-            ch = arr[:, :, c]
-            padded = np.pad(ch, pad, mode="edge")
-            for i in range(arr.shape[0]):
-                for j in range(arr.shape[1]):
-                    result[i, j, c] = padded[i:i + ksize, j:j + ksize].max()
-        return result
-    padded = np.pad(arr, pad, mode="edge")
-    result = np.empty_like(arr)
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            result[i, j] = padded[i:i + ksize, j:j + ksize].max()
-    return result
+    padded = np.pad(
+        arr,
+        ((pad, pad), (pad, pad)) + ((0, 0),) * (arr.ndim - 2),
+        mode="edge",
+    )
+    windows = sliding_window_view(padded, (ksize, ksize), axis=(0, 1))
+    return windows.max(axis=(-2, -1)).astype(arr.dtype, copy=False)
 
 
 class ErodeProcessor(BaseProcessor):

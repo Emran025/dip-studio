@@ -290,15 +290,22 @@ class ToolParametersPanel(QWidget):
         schema: tuple[ParameterDefinition, ...],
         show_actions: bool = True,
     ) -> None:
+        # QFormLayout.removeRow() may destroy a child widget immediately. The
+        # actions widget must be scheduled for deletion before the layout is
+        # emptied, otherwise its Python wrapper can point to a deleted C++
+        # object when the schema is changed repeatedly.
+        if self._actions is not None:
+            self._actions.deleteLater()
+            self._actions = None
         while self._form.rowCount():
             self._form.removeRow(0)
         self._controls.clear()
-        if self._actions is not None:
-            self._actions.deleteLater()
-        self._actions = None
         self._definitions = schema
         if not schema:
             self._form.addRow("Parameters", QLineEdit("No parameters"))
+            if show_actions:
+                self._actions = self._create_actions()
+                self._form.addRow(self._actions)
             return
         for index, definition in enumerate(schema):
             control: QWidget
@@ -312,6 +319,11 @@ class ToolParametersPanel(QWidget):
                 control = widget
             elif definition.kind == "number":
                 widget = QDoubleSpinBox()
+                # Qt defaults to two decimal places, which rounds values such
+                # as Active Contours gamma=0.001 to 0.00 and then fails the
+                # registry validation. Keep enough precision for scientific
+                # image-processing parameters while preserving normal values.
+                widget.setDecimals(6)
                 widget.setRange(definition.minimum, definition.maximum)
                 if definition.step is not None:
                     widget.setSingleStep(definition.step)
