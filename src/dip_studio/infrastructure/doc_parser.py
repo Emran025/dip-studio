@@ -270,6 +270,7 @@ class DocParser:
     background-color: #0f172a;
     direction: {direction};
     text-align: {align};
+    unicode-bidi: plaintext;
     padding: 16px 24px;
   }}
   h1 {{ color: #38bdf8; font-size: 22px; margin-bottom: 16px;

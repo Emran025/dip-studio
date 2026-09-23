@@ -125,6 +125,7 @@ class DocViewerDialog(QDialog):
         self.setWindowTitle("دليل المستخدم — User Guide")
         self.setMinimumSize(860, 580)
         self.resize(980, 640)
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         default_docs = Path("docs/user_guide")
         self._docs_dir = docs_dir if docs_dir and docs_dir.exists() else default_docs
@@ -189,6 +190,7 @@ class DocViewerDialog(QDialog):
 
         # 2. Main Content Splitter (Sidebar + Text Browser)
         self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self._splitter.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         self._sidebar = DocSidebarWidget(self._splitter)
         self._sidebar.pageSelected.connect(self._display_page)
