@@ -1,7 +1,9 @@
 """Small, consistent vector icon set for the editor chrome."""
 
+import sys
 from collections.abc import Callable
 from importlib import import_module
+from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
@@ -18,6 +20,7 @@ from dip_studio.presentation.theme import DARK
 
 _ICON_SIZE = 64
 _STROKE = 3.0
+_APP_ICON_NAME = "image-processing-icon.svg"
 
 
 _QTAWESOME_NAMES = {
@@ -105,6 +108,10 @@ def icon_for(
     prefer_vector: bool = False,
 ) -> QIcon:
     """Return a local QtAwesome icon, with the built-in vector fallback."""
+    if name == "app":
+        app_icon = _application_icon()
+        if not app_icon.isNull():
+            return app_icon
     if prefer_vector:
         return _vector_icon_for(name, color)
     try:
@@ -120,6 +127,15 @@ def icon_for(
         # QtAwesome's installed font set can lag behind its Python package.
         # Keep the UI usable by falling back to the built-in icon.
         return _vector_icon_for(name, color)
+
+
+def _application_icon() -> QIcon:
+    """Load the supplied high-resolution icon in source and frozen builds."""
+    if getattr(sys, "frozen", False):
+        asset_root = Path(getattr(sys, "_MEIPASS", Path.cwd())) / "dip_studio" / "assets"
+    else:
+        asset_root = Path(__file__).resolve().parents[1] / "assets"
+    return QIcon(str(asset_root / _APP_ICON_NAME))
 
 
 def _vector_icon_for(name: str, color: str) -> QIcon:
