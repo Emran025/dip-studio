@@ -7,6 +7,8 @@ jobs:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
+      - name: Install Qt runtime libraries (Ubuntu)
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install -e '.[gui,vision,dev]'
