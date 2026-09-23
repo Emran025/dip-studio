@@ -34,6 +34,9 @@ def main_window():
     window = MainWindow(controller=controller)
     yield window
     window._processing_worker._pool.clear()
+    # Closing a dirty real window asks the user what to do; a fixture must not
+    # block on that modal dialog during automated teardown.
+    window._confirm_document_transition = lambda: True
     window.close()
     app.processEvents()
 

@@ -293,6 +293,9 @@ class ToolParametersPanel(QWidget):
         while self._form.rowCount():
             self._form.removeRow(0)
         self._controls.clear()
+        if self._actions is not None:
+            self._actions.deleteLater()
+        self._actions = None
         self._definitions = schema
         if not schema:
             self._form.addRow("Parameters", QLineEdit("No parameters"))

@@ -883,6 +883,7 @@ class MainWindow(QMainWindow):
                     ParameterDefinition(
                         parameter.label, parameter.kind, parameter.default,
                         parameter.minimum, parameter.maximum, parameter.choices, parameter.id,
+                        step=parameter.step,
                     )
                     for parameter in tool.parameters
                 )
@@ -2733,7 +2734,6 @@ class MainWindow(QMainWindow):
         self._processing_worker.cancel_all()
         self._processing_worker.wait_for_done()
         self._save_shortcut_overrides()
-        self._save_workspace()
         self._save_workspace()
         event.accept()
 

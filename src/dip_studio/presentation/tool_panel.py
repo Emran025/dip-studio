@@ -146,7 +146,7 @@ class ToolPanel(QWidget):
         button.setFixedSize(44, 44)
         first_tool_id = tools[0].id
         button.clicked.connect(
-            lambda _checked=False, tid=first_tool_id: self.toolSelected.emit(tid)
+            lambda _checked=False, tid=first_tool_id: self._activate_tool(tid)
         )
         if len(tools) == 1:
             return button, button
@@ -173,7 +173,7 @@ class ToolPanel(QWidget):
             tool_button.clicked.connect(
                 lambda _checked=False, tid=tool_id, panel=popup: (
                     panel.hide(),
-                    self.toolSelected.emit(tid),
+                    self._activate_tool(tid),
                 )
             )
             index = tools.index(tool)
@@ -199,6 +199,10 @@ class ToolPanel(QWidget):
         arrow.raise_()
         button.setToolTip(f"{group_name} — click the corner arrow to choose a tool")
         return container, button
+
+    def _activate_tool(self, tool_id: str) -> None:
+        """Update local selection state before notifying the main window."""
+        self.select_tool(tool_id, emit=True)
 
     @staticmethod
     def _show_tool_grid(popup: QFrame, control: QToolButton) -> None:
