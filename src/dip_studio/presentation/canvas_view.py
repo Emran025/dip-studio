@@ -123,8 +123,15 @@ class CanvasView(QWidget):
         current: QPoint,
         bounds: QRect | None = None,
         minimum: int = 1,
+        shift: bool = False,
+        alt: bool = False,
     ) -> QRect:
-        """Resize a rectangle while keeping it valid and inside ``bounds``."""
+        """Resize a rectangle while keeping it valid and inside ``bounds``.
+
+        ``shift`` preserves the original aspect ratio and ``alt`` resizes
+        around the original center.  Both constraints are applied after the
+        pointer is clamped to the document bounds.
+        """
         source = rect.normalized()
         limit = (bounds or source).normalized()
         minimum = max(1, int(minimum))
@@ -132,6 +139,39 @@ class CanvasView(QWidget):
         right, bottom = source.right(), source.bottom()
         x = max(limit.left(), min(limit.right(), current.x()))
         y = max(limit.top(), min(limit.bottom(), current.y()))
+
+        if alt:
+            width = max(minimum, abs(x - source.center().x()) * 2 + 1)
+            height = max(minimum, abs(y - source.center().y()) * 2 + 1)
+            if shift:
+                ratio = source.width() / max(1, source.height())
+                if width / max(1, height) > ratio:
+                    width = max(minimum, round(height * ratio))
+                else:
+                    height = max(minimum, round(width / max(ratio, 0.001)))
+            center = source.center()
+            max_width = max(1, 2 * min(center.x() - limit.left(), limit.right() - center.x()) + 1)
+            max_height = max(
+                1, 2 * min(center.y() - limit.top(), limit.bottom() - center.y()) + 1
+            )
+            width = min(width, max_width)
+            height = min(height, max_height)
+            centered = QRect(0, 0, width, height)
+            centered.moveCenter(center)
+            return centered
+
+        if shift and ("left" in handle or "right" in handle) and (
+            "top" in handle or "bottom" in handle
+        ):
+            ratio = source.width() / max(1, source.height())
+            dx = abs(x - (right if "left" in handle else left))
+            dy = abs(y - (bottom if "top" in handle else top))
+            if dx / max(1, dy) > ratio:
+                dy = max(minimum - 1, round(dx / max(ratio, 0.001)))
+            else:
+                dx = max(minimum - 1, round(dy * ratio))
+            x = right - dx if "left" in handle else left + dx
+            y = bottom - dy if "top" in handle else top + dy
 
         if "left" in handle:
             left = max(limit.left(), min(x, right - minimum + 1))

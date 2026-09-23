@@ -20,10 +20,13 @@ from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
     QFileDialog,
+    QFrame,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QScrollArea,
+    QSizePolicy,
     QTextEdit,
     QToolBar,
     QWidget,
@@ -607,7 +610,19 @@ class MainWindow(QMainWindow):
         tools = ToolPanel(self._controller.tools)
         tools.toolSelected.connect(self._select_tool)
         self._tool_panel = tools
-        self._tools_dock = self._dock("Tools", tools)
+        # The tool list is taller than some Windows work areas after DPI
+        # scaling.  Keep the dock itself shrinkable and scroll the tool list
+        # instead of making the whole main window exceed the screen height.
+        tool_scroll = QScrollArea()
+        tool_scroll.setObjectName("toolScrollArea")
+        tool_scroll.setWidgetResizable(True)
+        tool_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        tool_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        tool_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        tool_scroll.setMinimumSize(0, 0)
+        tool_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        tool_scroll.setWidget(tools)
+        self._tools_dock = self._dock("Tools", tool_scroll)
         self._sidebar = RightSidebar()
         self._sidebar.tabs.panelDetached.connect(self._detach_workspace_panel)
         self._workspace_dock = self._dock("Workspace", self._sidebar)
@@ -2875,6 +2890,7 @@ class MainWindow(QMainWindow):
             restored = self.restoreGeometry(geometry) and restored
         if isinstance(state, QByteArray) and not state.isEmpty():
             restored = self.restoreState(state) and restored
+        self._constrain_window_to_screen()
         if not restored:
             self._reset_workspace(save=False)
             self.statusBar().showMessage(
@@ -2883,6 +2899,24 @@ class MainWindow(QMainWindow):
         panel = settings.value("workspacePanel", 0, type=int)
         if 0 <= panel < self._sidebar.tabs.count():
             self._sidebar.tabs.setCurrentIndex(panel)
+
+    def _constrain_window_to_screen(self) -> None:
+        """Keep restored geometry within the current screen's work area."""
+        if self.isMaximized() or self.isFullScreen():
+            return
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        width = min(max(self.width(), self.minimumWidth()), available.width())
+        height = min(max(self.height(), self.minimumHeight()), available.height())
+        self.resize(width, height)
+        frame = self.frameGeometry()
+        if not available.contains(frame.topLeft()):
+            self.move(
+                max(available.left(), min(frame.left(), available.right() - frame.width() + 1)),
+                max(available.top(), min(frame.top(), available.bottom() - frame.height() + 1)),
+            )
 
     def _reset_workspace(self, *, save: bool = True) -> None:
         self.resize(1200, 760)
