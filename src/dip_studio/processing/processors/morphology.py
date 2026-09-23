@@ -18,8 +18,25 @@ except ImportError:
     pass
 
 
+def _kernel_size(request: ProcessingRequest) -> int:
+    """Return a safe, centered structuring-element size.
+
+    Morphological kernels must be positive and odd so that the anchor stays at
+    the exact center. Requests can come from plugins or automation as well as
+    the Qt panel, so malformed values are normalized at the processor boundary.
+    """
+    try:
+        size = int(float(_param(request, "kernel_size", "3")))
+    except (TypeError, ValueError, OverflowError):
+        size = 3
+    size = max(1, size)
+    if size % 2 == 0:
+        size += 1
+    return size
+
+
 def _get_kernel(request: ProcessingRequest) -> np.ndarray:
-    ksize = max(1, int(float(_param(request, "kernel_size", "3"))))
+    ksize = _kernel_size(request)
     shape_name = _param(request, "kernel_shape", "rect")
     if _CV2_AVAILABLE:
         shapes = {
@@ -78,7 +95,7 @@ class ErodeProcessor(BaseProcessor):
     operation = "erode"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
-        ksize = max(1, int(float(_param(request, "kernel_size", "3"))))
+        ksize = _kernel_size(request)
         if _CV2_AVAILABLE:
             kernel = _get_kernel(request)
             return cv2.erode(arr, kernel)
@@ -91,7 +108,7 @@ class DilateProcessor(BaseProcessor):
     operation = "dilate"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
-        ksize = max(1, int(float(_param(request, "kernel_size", "3"))))
+        ksize = _kernel_size(request)
         if _CV2_AVAILABLE:
             kernel = _get_kernel(request)
             return cv2.dilate(arr, kernel)
@@ -104,7 +121,7 @@ class MorphOpenProcessor(BaseProcessor):
     operation = "morph_open"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
-        ksize = max(1, int(float(_param(request, "kernel_size", "3"))))
+        ksize = _kernel_size(request)
         if _CV2_AVAILABLE:
             kernel = _get_kernel(request)
             return cv2.morphologyEx(arr, cv2.MORPH_OPEN, kernel)
@@ -118,7 +135,7 @@ class MorphCloseProcessor(BaseProcessor):
     operation = "morph_close"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
-        ksize = max(1, int(float(_param(request, "kernel_size", "3"))))
+        ksize = _kernel_size(request)
         if _CV2_AVAILABLE:
             kernel = _get_kernel(request)
             return cv2.morphologyEx(arr, cv2.MORPH_CLOSE, kernel)

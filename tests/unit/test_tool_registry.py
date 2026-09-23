@@ -1,5 +1,6 @@
 import pytest
 
+from dip_studio.application.shortcut_registry import default_shortcut_registry
 from dip_studio.application.tool_registry import (
     InMemoryToolRegistry,
     ToolDefinition,
@@ -7,7 +8,6 @@ from dip_studio.application.tool_registry import (
     default_tool_registry,
     processing_tool_definitions,
 )
-from dip_studio.application.shortcut_registry import default_shortcut_registry
 from dip_studio.presentation.tool_panel import ToolPanel
 
 
@@ -88,3 +88,18 @@ def test_required_blur_filters_are_exposed_in_registry_and_toolbar_group() -> No
     assert required <= definitions.keys()
     assert {definitions[tool_id].category for tool_id in required} == {"Filter"}
     assert required <= set(dict(ToolPanel._GROUPS)["Filter"])
+
+
+def test_morphology_kernel_properties_are_centered_and_safe() -> None:
+    definitions = {
+        definition.id: definition
+        for definition in (*default_tool_registry().list(), *processing_tool_definitions())
+    }
+    for tool_id in ("morphology", "erode", "dilate", "morph_open", "morph_close"):
+        parameter = next(
+            parameter for parameter in definitions[tool_id].parameters
+            if parameter.id == "kernel_size"
+        )
+        assert parameter.step == 2
+        assert parameter.validate(3)
+        assert not parameter.validate(2)

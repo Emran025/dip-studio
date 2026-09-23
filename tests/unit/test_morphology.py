@@ -5,7 +5,10 @@ import pytest
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.processing.contracts import ProcessingRequest
 from dip_studio.processing.processors.morphology import (
-    ErodeProcessor, DilateProcessor, MorphOpenProcessor, MorphCloseProcessor
+    DilateProcessor,
+    ErodeProcessor,
+    MorphCloseProcessor,
+    MorphOpenProcessor,
 )
 
 
@@ -59,3 +62,21 @@ class TestOpenClose:
         buf = store.allocate(arr)
         out = store.get(MorphCloseProcessor(store).process(buf, _req("morph_close", kernel_size=3)))
         assert out.shape == arr.shape
+
+    @pytest.mark.parametrize(
+        "processor",
+        [ErodeProcessor, DilateProcessor, MorphOpenProcessor, MorphCloseProcessor],
+    )
+    def test_even_or_invalid_kernel_is_normalized_to_a_centered_kernel(
+        self, processor: type
+    ) -> None:
+        store = ImageDataStore()
+        arr = np.zeros((9, 9), dtype=np.uint8)
+        arr[4, 4] = 255
+        buf = store.allocate(arr)
+
+        even = store.get(processor(store).process(buf, _req("morphology", kernel_size=2)))
+        invalid = store.get(processor(store).process(buf, _req("morphology", kernel_size="bad")))
+
+        assert even.shape == arr.shape
+        assert invalid.shape == arr.shape

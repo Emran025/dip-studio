@@ -2165,7 +2165,12 @@ class MainWindow(QMainWindow):
                 if preview_data:
                     self._canvas.show_preview(preview_data)
                 self.statusBar().showMessage(f"Preview parameters: {', '.join(values)}")
-            except (KeyError, ValueError, RuntimeError) as error:
+            except ValueError as error:
+                # Parameter widgets emit while a value is being edited. A
+                # modal dialog here interrupts typing and makes every
+                # temporarily invalid value feel like an application failure.
+                self.statusBar().showMessage(f"Adjust parameters: {error}", 2500)
+            except (KeyError, RuntimeError) as error:
                 QMessageBox.critical(self, "Preview failed", str(error))
 
     def _apply_parameters(self, values: dict[str, object]) -> None:

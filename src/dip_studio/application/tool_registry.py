@@ -1,8 +1,16 @@
 """Discoverable tool definitions owned by the application layer."""
 
-from dataclasses import dataclass
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Protocol
+
+
+def _is_odd_integer(value: object) -> bool:
+    """Validate centered kernel sizes exposed by processing tools."""
+    try:
+        return int(value) % 2 == 1
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +129,10 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Smooth with Gaussian kernel",
             None,
             parameters=(
-                ToolParameter("kernel_size", "Kernel Size", "integer", 5, 1, 51),
+                ToolParameter(
+                    "kernel_size", "Kernel Size", "integer", 5, 1, 51,
+                    step=2, validation=_is_odd_integer,
+                ),
                 ToolParameter("sigma", "Sigma", "number", 1.0, 0.1, 10.0),
             ),
         ),
@@ -131,7 +142,10 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Remove salt-and-pepper noise",
             None,
-            parameters=(ToolParameter("kernel_size", "Kernel Size", "integer", 5, 1, 21),),
+            parameters=(ToolParameter(
+                "kernel_size", "Kernel Size", "integer", 5, 1, 21,
+                step=2, validation=_is_odd_integer,
+            ),),
         ),
         ToolDefinition(
             "bilateral_filter",
@@ -151,7 +165,10 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Uniform box filter denoising",
             None,
-            parameters=(ToolParameter("kernel_size", "Kernel Size", "integer", 3, 1, 31),),
+            parameters=(ToolParameter(
+                "kernel_size", "Kernel Size", "integer", 3, 1, 31,
+                step=2, validation=_is_odd_integer,
+            ),),
         ),
         ToolDefinition("sobel", "Sobel", "Filter", "Sobel edge detection", None),
         ToolDefinition(
@@ -190,7 +207,10 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Morphological erosion",
             None,
-            parameters=(ToolParameter("kernel_size", "Kernel Size", "integer", 3, 1, 21),),
+            parameters=(ToolParameter(
+                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
+                step=2, validation=_is_odd_integer,
+            ),),
         ),
         ToolDefinition(
             "dilate",
@@ -198,7 +218,10 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Morphological dilation",
             None,
-            parameters=(ToolParameter("kernel_size", "Kernel Size", "integer", 3, 1, 21),),
+            parameters=(ToolParameter(
+                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
+                step=2, validation=_is_odd_integer,
+            ),),
         ),
         ToolDefinition(
             "morph_open",
@@ -206,7 +229,10 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Opening: erode then dilate",
             None,
-            parameters=(ToolParameter("kernel_size", "Kernel Size", "integer", 3, 1, 21),),
+            parameters=(ToolParameter(
+                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
+                step=2, validation=_is_odd_integer,
+            ),),
         ),
         ToolDefinition(
             "morph_close",
@@ -214,7 +240,10 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Closing: dilate then erode",
             None,
-            parameters=(ToolParameter("kernel_size", "Kernel Size", "integer", 3, 1, 21),),
+            parameters=(ToolParameter(
+                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
+                step=2, validation=_is_odd_integer,
+            ),),
         ),
         ToolDefinition("grayscale", "Grayscale", "Filter", "Convert to grayscale", None),
         ToolDefinition(
@@ -356,7 +385,9 @@ def default_tool_registry() -> InMemoryToolRegistry:
             ToolDefinition("eyedropper", "Eyedropper", "Sampling", "Sample a color", "I"),
             ToolDefinition("text", "Text", "Vector", "Create text", "T"),
             ToolDefinition("shape_rectangle", "Rectangle", "Drawing", "Draw a rectangle", "U"),
-            ToolDefinition("shape_ellipse", "Ellipse", "Drawing", "Draw an ellipse or circle", None),
+            ToolDefinition(
+                "shape_ellipse", "Ellipse", "Drawing", "Draw an ellipse or circle", None
+            ),
             ToolDefinition("shape_line", "Line", "Drawing", "Draw a line", None),
             ToolDefinition("shape_polygon", "Polygon", "Drawing", "Draw a regular polygon", None),
             ToolDefinition(
@@ -398,7 +429,10 @@ def default_tool_registry() -> InMemoryToolRegistry:
                         "Erode",
                         choices=("Erode", "Dilate", "Open", "Close"),
                     ),
-                    ToolParameter("kernel_size", "Kernel Size", "integer", 3, 1, 31),
+                    ToolParameter(
+                        "kernel_size", "Kernel Size", "integer", 3, 1, 31,
+                        step=2, validation=_is_odd_integer,
+                    ),
                 ),
             ),
             ToolDefinition(
