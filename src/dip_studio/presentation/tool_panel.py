@@ -31,7 +31,10 @@ class ToolPanel(QWidget):
             ("selection", "ellipse_selection", "lasso", "polygon_selection", "color_selection"),
         ),
         ("Transform", ("crop", "move", "transform", "rotate")),
-        ("Filter", ("blur", "edge")),
+        (
+            "Filter",
+            ("blur", "edge", "gaussian_blur", "median_blur", "denoise_mean", "bilateral_filter"),
+        ),
         ("Paint", ("gradient", "brush", "pencil", "eraser", "fill")),
         ("Retouch", ("clone",)),
         ("Navigation", ("hand", "zoom")),

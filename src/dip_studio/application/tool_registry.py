@@ -145,6 +145,14 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
                 ToolParameter("sigma_space", "Sigma Space", "number", 75.0, 1.0, 200.0),
             ),
         ),
+        ToolDefinition(
+            "denoise_mean",
+            "Mean Filter",
+            "Filter",
+            "Uniform box filter denoising",
+            None,
+            parameters=(ToolParameter("kernel_size", "Kernel Size", "integer", 3, 1, 31),),
+        ),
         ToolDefinition("sobel", "Sobel", "Filter", "Sobel edge detection", None),
         ToolDefinition(
             "canny",

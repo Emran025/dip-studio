@@ -515,6 +515,9 @@ class MainWindow(QMainWindow):
         blur_menu.addAction("Bilateral Filter...").triggered.connect(
             self._processing_action("bilateral_filter", {}, dialog=True)
         )
+        blur_menu.addAction("Mean Filter...").triggered.connect(
+            self._processing_action("denoise_mean", {}, dialog=True)
+        )
 
         edge_menu = filter_menu.addMenu("Edges")
         edge_menu.addAction("Sobel").triggered.connect(self._processing_action("sobel", {}))

@@ -5,6 +5,7 @@ from dip_studio.application.tool_registry import (
     ToolDefinition,
     ToolParameter,
     default_tool_registry,
+    processing_tool_definitions,
 )
 from dip_studio.application.shortcut_registry import default_shortcut_registry
 from dip_studio.presentation.tool_panel import ToolPanel
@@ -78,3 +79,12 @@ def test_rectangle_shape_owns_the_drawing_shortcut() -> None:
     assert shortcuts.get("tool.shape_rectangle").key == "U"
     with pytest.raises(KeyError):
         shortcuts.get("tool.shape")
+
+
+def test_required_blur_filters_are_exposed_in_registry_and_toolbar_group() -> None:
+    required = {"gaussian_blur", "median_blur", "denoise_mean", "bilateral_filter"}
+    definitions = {definition.id: definition for definition in processing_tool_definitions()}
+
+    assert required <= definitions.keys()
+    assert {definitions[tool_id].category for tool_id in required} == {"Filter"}
+    assert required <= set(dict(ToolPanel._GROUPS)["Filter"])
