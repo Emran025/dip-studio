@@ -225,9 +225,11 @@ class ImageDataStore:
         cut: bool = False,
         mask_buffer_id: str | None = None,
     ) -> tuple[str, str | None]:
-        """Extract rectangular region from buffer.
+        """Extract a rectangular region from a buffer.
 
-        Returns (new_selection_buffer_id, updated_source_buffer_id_if_cut).
+        The selection buffer is cropped to the selected pixel bounds rather
+        than retaining a full document-sized transparent canvas. Returns
+        (new_selection_buffer_id, updated_source_buffer_id_if_cut).
         """
         from dip_studio.rendering.compositor import _to_rgba
 
@@ -260,12 +262,11 @@ class ImageDataStore:
             if mask.shape[:2] == (sh, sw):
                 selected = np.minimum(selected, mask)
 
-        new_arr = np.zeros((sh, sw, 4), dtype=np.uint8)
         region = src_arr.copy()
         region[:, :, 3] = (
             region[:, :, 3].astype(np.uint16) * selected.astype(np.uint16) // 255
         ).astype(np.uint8)
-        new_arr[sy1:sy2, sx1:sx2] = region[sy1:sy2, sx1:sx2]
+        new_arr = np.ascontiguousarray(region[sy1:sy2, sx1:sx2])
         new_buf_id = self.allocate(new_arr)
 
         cut_buf_id = None

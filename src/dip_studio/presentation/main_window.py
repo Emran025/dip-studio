@@ -408,7 +408,7 @@ class MainWindow(QMainWindow):
         else:
             handler = lambda: self._quick_apply(operation, parameters)
         self._register_ui_command(command_id, handler)
-        return lambda command_id=command_id: self._dispatch_ui_command(command_id)
+        return lambda _checked=False, command_id=command_id: self._dispatch_ui_command(command_id)
 
     def _create_menus(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -615,7 +615,7 @@ class MainWindow(QMainWindow):
         self._sidebar.set_layer_callback(self._change_layer)
         self._sidebar.set_layer_structure_callback(self._change_layer_structure)
         self._sidebar.set_layer_rename_callback(self._rename_layer)
-        self._sidebar.properties.previewRequested.connect(self._preview_parameters)
+        self._sidebar.properties.previewRequested.connect(self._on_properties_value_changed)
         self._sidebar.properties.applyRequested.connect(self._apply_parameters)
         self._sidebar.properties.cancelRequested.connect(self._cancel_parameters)
         self._sidebar.set_history_jump_callback(self._on_history_jump)
@@ -699,10 +699,162 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, RuntimeError) as error:
             QMessageBox.critical(self, "New project failed", str(error))
 
+    def _on_properties_value_changed(self, values: dict[str, object]) -> None:
+        if getattr(self, "_updating_properties_schema", False):
+            return
+        if getattr(self, "_is_editing_layer_properties", False):
+            self._apply_layer_property_changes(values)
+        else:
+            self._preview_parameters(values)
+
+    def _update_layer_properties_panel(self, layer: object, rect: tuple[int, int, int, int]) -> None:
+        """Populate the Properties panel sidebar with precise element & layer control fields."""
+        from dip_studio.application.presentation_bridge import is_group_layer, is_text_layer
+
+        x, y, w, h = rect
+        blend = getattr(layer, "blend_mode", "normal").title()
+        locked = getattr(layer, "locked", False)
+        visible = getattr(layer, "visible", True)
+        opacity = getattr(layer, "opacity", 1.0)
+
+        # If already editing layer properties for the SAME layer, just update values silently
+        if getattr(self, "_is_editing_layer_properties", False) and getattr(self, "_current_properties_layer_id", None) == layer.id:
+            self._sidebar.properties.set_values({
+                "layer_name": layer.name,
+                "pos_x": x,
+                "pos_y": y,
+                "width": w,
+                "height": h,
+                "opacity": opacity,
+                "blend_mode": blend,
+                "visible": visible,
+                "locked": locked,
+            })
+            return
+
+        layer_type = "Image"
+        if is_group_layer(layer):
+            layer_type = "Group"
+        elif is_text_layer(layer):
+            layer_type = "Text"
+        elif getattr(layer, "shape_type", None):
+            layer_type = f"Shape ({getattr(layer, 'shape_type').title()})"
+
+        schema = (
+            ParameterDefinition("Name", "string", layer.name, id="layer_name"),
+            ParameterDefinition("Type", "string", layer_type, read_only=True, id="layer_type"),
+            ParameterDefinition("Position X", "integer", x, minimum=-10000, maximum=10000, id="pos_x"),
+            ParameterDefinition("Position Y", "integer", y, minimum=-10000, maximum=10000, id="pos_y"),
+            ParameterDefinition("Width", "integer", w, minimum=1, maximum=10000, read_only=True, id="width"),
+            ParameterDefinition("Height", "integer", h, minimum=1, maximum=10000, read_only=True, id="height"),
+            ParameterDefinition("Opacity", "number", opacity, minimum=0.0, maximum=1.0, step=0.05, id="opacity"),
+            ParameterDefinition(
+                "Blend Mode",
+                "choice",
+                blend,
+                choices=(
+                    "Normal",
+                    "Multiply",
+                    "Screen",
+                    "Overlay",
+                    "Soft Light",
+                    "Hard Light",
+                    "Darken",
+                    "Lighten",
+                    "Difference",
+                ),
+                id="blend_mode",
+            ),
+            ParameterDefinition("Visible", "boolean", visible, id="visible"),
+            ParameterDefinition("Locked", "boolean", locked, id="locked"),
+        )
+        self._updating_properties_schema = True
+        try:
+            self._is_editing_layer_properties = True
+            self._current_properties_layer_id = layer.id
+            self._sidebar.properties.set_schema(schema, show_actions=False)
+        finally:
+            self._updating_properties_schema = False
+
+    def _apply_layer_property_changes(self, values: dict[str, object]) -> None:
+        selected_ids = self._selected_layer_ids()
+        if not selected_ids:
+            return
+        layer_id = selected_ids[0]
+
+        def get_active_layer() -> tuple[DocumentView | None, object | None]:
+            doc = self._controller.document
+            if doc is None:
+                return None, None
+            layer = next((l for l in doc.layers if l.id == layer_id), None)
+            return doc, layer
+
+        doc, layer = get_active_layer()
+        if doc is None or layer is None:
+            return
+
+        new_name = str(values.get("layer_name", values.get("Name", layer.name))).strip()
+        if new_name and new_name != layer.name:
+            self._rename_layer(layer.id, new_name)
+
+        doc, layer = get_active_layer()
+        if doc is None or layer is None:
+            return
+
+        try:
+            new_opacity = float(values.get("opacity", values.get("Opacity", layer.opacity)))
+            if abs(new_opacity - layer.opacity) > 0.001:
+                self._change_layer((layer.id,), opacity=new_opacity)
+        except (ValueError, TypeError):
+            pass
+
+        doc, layer = get_active_layer()
+        if doc is None or layer is None:
+            return
+
+        new_blend = str(values.get("blend_mode", values.get("Blend Mode", layer.blend_mode))).casefold()
+        if new_blend != getattr(layer, "blend_mode", "normal").casefold():
+            self._change_layer((layer.id,), blend_mode=new_blend)
+
+        doc, layer = get_active_layer()
+        if doc is None or layer is None:
+            return
+
+        new_visible = bool(values.get("visible", values.get("Visible", layer.visible)))
+        if new_visible != layer.visible:
+            self._change_layer((layer.id,), visible=new_visible)
+
+        doc, layer = get_active_layer()
+        if doc is None or layer is None:
+            return
+
+        new_locked = bool(values.get("locked", values.get("Locked", getattr(layer, "locked", False))))
+        if new_locked != getattr(layer, "locked", False):
+            self._change_layer((layer.id,), locked=new_locked)
+
+        doc, layer = get_active_layer()
+        if doc is None or layer is None:
+            return
+
+        try:
+            cur_rect = self._selected_layer_content_rect(doc, layer.id)
+            new_x = int(float(values.get("pos_x", values.get("Position X", cur_rect[0]))))
+            new_y = int(float(values.get("pos_y", values.get("Position Y", cur_rect[1]))))
+            dx = new_x - cur_rect[0]
+            dy = new_y - cur_rect[1]
+            if (dx != 0 or dy != 0) and not getattr(layer, "locked", False):
+                updated_doc = self._controller.translate_layer(layer.id, dx, dy)
+                if updated_doc is not None:
+                    self._refresh_preview()
+        except (ValueError, TypeError):
+            pass
+
     def _select_tool(self, tool_id: str) -> None:
         """Activate a tool: update controller, properties panel, and canvas cursor."""
         tool = next((t for t in self._controller.tools if t.id == tool_id), None)
         if tool is None:
+            self._is_editing_layer_properties = False
+            self._current_properties_layer_id = None
             self._sidebar.properties.set_schema(())
             return
         try:
@@ -722,15 +874,35 @@ class MainWindow(QMainWindow):
             self._selection_origin = None
             self._canvas.set_selection_rect(None)
         # Load parameter schema into Properties panel
-        schema = tuple(
-            ParameterDefinition(
-                parameter.label, parameter.kind, parameter.default,
-                parameter.minimum, parameter.maximum, parameter.choices, parameter.id,
-            )
-            for parameter in tool.parameters
-        )
-        self._sidebar.properties.set_schema(schema)
-        self._sidebar.select_panel("Properties")
+        self._updating_properties_schema = True
+        try:
+            if tool.parameters:
+                self._is_editing_layer_properties = False
+                self._current_properties_layer_id = None
+                schema = tuple(
+                    ParameterDefinition(
+                        parameter.label, parameter.kind, parameter.default,
+                        parameter.minimum, parameter.maximum, parameter.choices, parameter.id,
+                    )
+                    for parameter in tool.parameters
+                )
+                self._sidebar.properties.set_schema(schema, show_actions=True)
+                self._sidebar.select_panel("Properties")
+            else:
+                doc = self._controller.document
+                selected_ids = self._selected_layer_ids()
+                if doc is not None and selected_ids:
+                    layer = next((l for l in doc.layers if l.id == selected_ids[0]), None)
+                    if layer is not None:
+                        rect = self._selected_layer_content_rect(doc, layer.id)
+                        self._update_layer_properties_panel(layer, rect)
+                        self._sidebar.select_panel("Properties")
+                else:
+                    self._is_editing_layer_properties = False
+                    self._current_properties_layer_id = None
+                    self._sidebar.properties.set_schema(())
+        finally:
+            self._updating_properties_schema = False
         # Activate Photoshop crop mode or standard canvas mode
         if tool_id == "crop":
             self._canvas.set_crop_mode(True)
@@ -791,6 +963,12 @@ class MainWindow(QMainWindow):
             self._canvas.set_active_layer_rects(
                 tuple(rects), doc.image.width, doc.image.height
             )
+            tool = self._selected_tool()
+            if tool is None or not tool.parameters or self._active_tool_id in {
+                "select", "move", "hand", "zoom", "eyedropper", "text"
+            }:
+                self._update_layer_properties_panel(layer, rect)
+
             from dip_studio.application.presentation_bridge import is_text_layer
             if self._active_tool_id == "text" and is_text_layer(layer):
                 self._show_text_layer_dialog(existing_layer=layer)

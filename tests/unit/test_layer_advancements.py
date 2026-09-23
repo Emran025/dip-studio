@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from dip_studio.application.editor import EditorController
+from dip_studio.domain.model import Transform
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.rendering.ports import BlankDocumentRenderer
 
@@ -41,10 +42,11 @@ class TestLayerFromSelection:
         pasted_layer = pasted.layers[-1]
         assert pasted_layer.id != source.id
         assert pasted_layer.buffer_id != source.buffer_id
-        assert pasted_layer.transform == source.transform
+        assert pasted_layer.transform == Transform(tx=2.0, ty=2.0)
         pasted_arr = store.get(pasted_layer.buffer_id)  # type: ignore[arg-type]
-        assert (pasted_arr[2:7, 2:7, 0] == 100).all()
-        assert (pasted_arr[:2, :, 3] == 0).all()
+        assert pasted_arr.shape == (5, 5, 4)
+        assert (pasted_arr[:, :, 0] == 100).all()
+        assert (pasted_arr[:, :, 3] == 255).all()
 
     def test_cut_selection_stores_clipboard_and_clears_source_without_adding_layer(self) -> None:
         controller, store = _setup_controller()
@@ -77,8 +79,9 @@ class TestLayerFromSelection:
         pasted_layer = pasted.layers[-1]
         pasted_arr = store.get(pasted_layer.buffer_id)  # type: ignore[arg-type]
         assert pasted_layer.id != source_layer.id
-        assert (pasted_arr[2:7, 2:7, 0] == 100).all()
-        assert (pasted_arr[:2, :, 3] == 0).all()
+        assert pasted_arr.shape == (5, 5, 4)
+        assert (pasted_arr[:, :, 0] == 100).all()
+        assert (pasted_arr[:, :, 3] == 255).all()
 
     def test_masked_selection_does_not_copy_or_cut_the_bounding_box_background(self) -> None:
         controller, store = _setup_controller()
@@ -94,8 +97,8 @@ class TestLayerFromSelection:
         pasted_arr = store.get(pasted.layers[-1].buffer_id)  # type: ignore[arg-type]
         source_arr = store.get(pasted.layers[0].buffer_id)  # type: ignore[arg-type]
 
-        assert pasted_arr[4, 4, 3] == 255
-        assert pasted_arr[3, 3, 3] == 0
+        assert pasted_arr[2, 2, 3] == 255
+        assert pasted_arr[1, 1, 3] == 0
         assert source_arr[4, 4, 3] == 0
         assert source_arr[3, 3, 3] == 255
 
@@ -115,12 +118,11 @@ class TestLayerFromSelection:
 
         # Check extracted pixels
         new_arr = store.get(new_layer.buffer_id)
-        assert new_arr.shape == (20, 20, 4)
+        assert new_arr.shape == (5, 5, 4)
         # Inside selection rect: has pixel value 100
-        assert (new_arr[2:7, 2:7, 0] == 100).all()
-        # Outside selection rect: transparent (alpha == 0)
-        assert (new_arr[:2, :, 3] == 0).all()
-        assert (new_arr[7:, :, 3] == 0).all()
+        assert (new_arr[:, :, 0] == 100).all()
+        assert (new_arr[:, :, 3] == 255).all()
+        assert new_layer.transform == Transform(tx=2.0, ty=2.0)
 
         # Source layer is untouched
         src_arr = store.get(doc.layers[0].buffer_id)  # type: ignore[arg-type]

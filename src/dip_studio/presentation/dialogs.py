@@ -249,6 +249,8 @@ class ParameterDefinition:
     maximum: float = 100
     choices: tuple[str, ...] = ()
     id: str | None = None
+    read_only: bool = False
+    step: float | None = None
 
 
 class ToolParametersPanel(QWidget):
@@ -283,7 +285,11 @@ class ToolParametersPanel(QWidget):
         actions.addWidget(cancel)
         return actions_widget
 
-    def set_schema(self, schema: tuple[ParameterDefinition, ...]) -> None:
+    def set_schema(
+        self,
+        schema: tuple[ParameterDefinition, ...],
+        show_actions: bool = True,
+    ) -> None:
         while self._form.rowCount():
             self._form.removeRow(0)
         self._controls.clear()
@@ -296,12 +302,16 @@ class ToolParametersPanel(QWidget):
             if definition.kind == "integer":
                 widget = QSpinBox()
                 widget.setRange(int(definition.minimum), int(definition.maximum))
+                if definition.step is not None:
+                    widget.setSingleStep(int(definition.step))
                 widget.setValue(int(definition.default))
                 widget.valueChanged.connect(lambda _v: self.previewRequested.emit(self.values()))
                 control = widget
             elif definition.kind == "number":
                 widget = QDoubleSpinBox()
                 widget.setRange(definition.minimum, definition.maximum)
+                if definition.step is not None:
+                    widget.setSingleStep(definition.step)
                 widget.setValue(float(definition.default))
                 widget.valueChanged.connect(lambda _v: self.previewRequested.emit(self.values()))
                 control = widget
@@ -324,10 +334,15 @@ class ToolParametersPanel(QWidget):
                 widget = QLineEdit(str(definition.default))
                 widget.editingFinished.connect(lambda: self.previewRequested.emit(self.values()))
                 control = widget
+            if definition.read_only:
+                control.setEnabled(False)
             self._controls[str(index)] = control
             self._form.addRow(definition.label, control)
-        self._actions = self._create_actions()
-        self._form.addRow(self._actions)
+        if show_actions:
+            self._actions = self._create_actions()
+            self._form.addRow(self._actions)
+        else:
+            self._actions = None
 
     def values(self) -> dict[str, object]:
         values: dict[str, object] = {}

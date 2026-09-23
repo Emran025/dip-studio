@@ -41,6 +41,7 @@ from dip_studio.domain.model import (
     Layer,
     LayerId,
     ShapeLayer,
+    Transform,
 )
 from dip_studio.processing.contracts import ProcessingRequest
 from dip_studio.processing.contracts import ProcessingResult
@@ -267,6 +268,8 @@ class EditorController:
         if layer is None or layer.buffer_id is None or self._data_store is None:
             raise ValueError("Selected layer has no image content")
         x, y, width, height = rect
+        layer_x = max(0, min(x, document.image.width - 1))
+        layer_y = max(0, min(y, document.image.height - 1))
         selection_buffer, source_buffer = self._data_store.extract_selection(
             layer.buffer_id,
             x,
@@ -287,6 +290,7 @@ class EditorController:
                 layer.changed(
                     name=f"{layer.name} selection",
                     buffer_id=selection_buffer,
+                    transform=Transform(tx=float(layer_x), ty=float(layer_y)),
                     locked=False,
                 ),
             )
@@ -1155,6 +1159,8 @@ class EditorController:
         x, y, w, h = rect
         doc_w = document.image.width
         doc_h = document.image.height
+        layer_x = max(0, min(x, doc_w - 1))
+        layer_y = max(0, min(y, doc_h - 1))
 
         new_buffer_id = None
         if self._data_store is not None and src_layer.buffer_id is not None:
@@ -1174,6 +1180,7 @@ class EditorController:
             opacity=1.0,
             buffer_id=new_buffer_id,
             blend_mode=src_layer.blend_mode,
+            transform=Transform(tx=float(layer_x), ty=float(layer_y)),
         )
         self._history_for_active().execute(
             AddLayer(new_layer_name, source=new_layer, index=idx + 1), self._session

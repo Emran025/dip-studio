@@ -22,6 +22,7 @@ class ToolPanel(QWidget):
     """Displays tool groups and emits the selected tool name."""
 
     toolSelected = Signal(str)
+    _ANALYSIS_TOOL_IDS = frozenset(("histogram", "threshold", "morphology", "segment"))
 
     _GROUPS = (
         ("General", ("select",)),
@@ -111,7 +112,9 @@ class ToolPanel(QWidget):
             return
         self._selected_tool_id = tool.id
         button.setChecked(True)
-        button.setIcon(icon_for(tool.id))
+        button.setIcon(
+            icon_for(tool.id, prefer_vector=tool.id in self._ANALYSIS_TOOL_IDS)
+        )
         button.setToolTip(f"{tool.name}\n{tool.description}")
         if emit:
             self.toolSelected.emit(tool.id)
@@ -133,7 +136,12 @@ class ToolPanel(QWidget):
         button.setObjectName("toolButton")
         button.setCheckable(True)
         button.setAutoRaise(False)
-        button.setIcon(icon_for(tools[0].id))
+        button.setIcon(
+            icon_for(
+                tools[0].id,
+                prefer_vector=tools[0].id in self._ANALYSIS_TOOL_IDS,
+            )
+        )
         button.setIconSize(QSize(17, 17))
         button.setFixedSize(44, 44)
         first_tool_id = tools[0].id
@@ -155,7 +163,9 @@ class ToolPanel(QWidget):
             shortcut = f" [{tool.shortcut}]" if tool.shortcut else ""
             tool_button = QToolButton(popup)
             tool_button.setObjectName("toolGridItem")
-            tool_button.setIcon(icon_for(tool.id))
+            tool_button.setIcon(
+                icon_for(tool.id, prefer_vector=tool.id in self._ANALYSIS_TOOL_IDS)
+            )
             tool_button.setIconSize(QSize(20, 20))
             tool_button.setFixedSize(34, 34)
             tool_button.setToolTip(f"{tool.name}{shortcut}\n{tool.description}")
