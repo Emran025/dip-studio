@@ -89,9 +89,7 @@ class ActiveContoursProcessor(BaseProcessor):
         # Draw the contour on the result.
         out: np.ndarray
         if arr.ndim == 2:
-            out = np.stack([arr, arr, arr, np.full_like(arr, 255)], axis=-1)
-        elif arr.shape[2] == 3:
-            out = np.concatenate([arr, np.full((*arr.shape[:2], 1), 255, dtype=arr.dtype)], axis=-1)
+            out = np.repeat(arr[:, :, None], 3, axis=2)
         else:
             out = arr.copy()
 
@@ -103,6 +101,7 @@ class ActiveContoursProcessor(BaseProcessor):
             # Bresenham-like: just stamp the two endpoints for simplicity.
             out[r0, c0, :3] = [0, 220, 0]
             out[r1, c1, :3] = [0, 220, 0]
-            out[r0, c0, 3] = 255
-            out[r1, c1, 3] = 255
+            if out.shape[2] == 4:
+                out[r0, c0, 3] = 255
+                out[r1, c1, 3] = 255
         return out

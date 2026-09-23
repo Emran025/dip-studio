@@ -32,7 +32,7 @@ def test_segmentation_and_detection_are_exposed_in_properties_and_toolbar() -> N
         "hough_circles", "hough_lines",
     } <= definitions.keys()
     groups = dict(ToolPanel._GROUPS)
-    assert groups["Detection"] == ("hough_circles", "hough_lines")
+    assert groups["Detection"] == ("template_match", "hough_circles", "hough_lines")
     assert "watershed" in groups["Segmentation"]
     assert "connected_components" in groups["Segmentation"]
 

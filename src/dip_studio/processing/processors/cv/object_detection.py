@@ -164,8 +164,7 @@ class HoughLinesProcessor(BaseProcessor):
         canvas = out[:, :, :3]
         if lines is not None:
             print(f"[HoughLines] Detected {len(lines)} line segments")
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
+            for x1, y1, x2, y2 in np.asarray(lines).reshape(-1, 4):
                 cv2.line(canvas, (x1, y1), (x2, y2), (0, 255, 0), 2)
         else:
             print("[HoughLines] No lines detected")
