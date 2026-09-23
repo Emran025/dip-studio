@@ -9,6 +9,7 @@ Features:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Protocol, cast
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QFont, QIcon, QKeySequence
@@ -29,8 +30,17 @@ from PySide6.QtWidgets import (
 )
 
 from dip_studio.application.presentation_bridge import parse_doc_directory
-from dip_studio.infrastructure.doc_parser import DocPage
 from dip_studio.presentation.vector_icons import icon_for
+
+
+class DocPage(Protocol):
+    """Presentation-facing page contract supplied by the application bridge."""
+
+    file_path: Any
+    metadata: Any
+    markdown_text: str
+    html_content: str
+    is_rtl: bool
 
 
 class DocSidebarWidget(QWidget):
@@ -92,8 +102,7 @@ class DocSidebarWidget(QWidget):
         items = self._list_widget.selectedItems()
         if items:
             page = items[0].data(Qt.ItemDataRole.UserRole)
-            if isinstance(page, DocPage):
-                self.pageSelected.emit(page)
+            self.pageSelected.emit(page)
 
 
 class DocViewerDialog(QDialog):
@@ -187,7 +196,7 @@ class DocViewerDialog(QDialog):
         main_layout.addWidget(self._splitter)
 
     def reload_docs(self) -> None:
-        self._pages = parse_doc_directory(self._docs_dir)
+        self._pages = cast(tuple[DocPage, ...], parse_doc_directory(self._docs_dir))
         self._sidebar.set_pages(self._pages)
         if self._pages:
             self._display_page(self._pages[0])

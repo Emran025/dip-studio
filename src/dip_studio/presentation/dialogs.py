@@ -290,15 +290,17 @@ class ToolParametersPanel(QWidget):
         schema: tuple[ParameterDefinition, ...],
         show_actions: bool = True,
     ) -> None:
-        # QFormLayout.removeRow() may destroy a child widget immediately. The
-        # actions widget must be scheduled for deletion before the layout is
-        # emptied, otherwise its Python wrapper can point to a deleted C++
-        # object when the schema is changed repeatedly.
-        if self._actions is not None:
-            self._actions.deleteLater()
-            self._actions = None
+        # Detach rows before deleting their widgets. QFormLayout.removeRow()
+        # may destroy a child immediately, leaving cached Python wrappers for
+        # the action row pointing at an invalid C++ object during schema swaps.
         while self._form.rowCount():
-            self._form.removeRow(0)
+            row = self._form.takeRow(0)
+            for item in (row.labelItem, row.fieldItem):
+                widget = item.widget() if item is not None else None
+                if widget is not None:
+                    widget.setParent(None)
+                    widget.deleteLater()
+        self._actions = None
         self._controls.clear()
         self._definitions = schema
         if not schema:

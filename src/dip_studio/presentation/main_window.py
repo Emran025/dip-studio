@@ -63,7 +63,7 @@ from dip_studio.presentation.theme import DARK, LIGHT
 from dip_studio.presentation.theme_adapter import palette_for, stylesheet_for
 from dip_studio.presentation.tool_panel import ToolPanel
 from dip_studio.presentation.vector_icons import icon_for
-from dip_studio.rendering.ports import BlankDocumentRenderer
+from dip_studio.rendering.ports import BlankDocumentRenderer, RenderRequest
 
 
 class ImageView(Protocol):
@@ -1602,26 +1602,41 @@ class MainWindow(QMainWindow):
             return
         if event_type != "press" or event.button() != Qt.MouseButton.LeftButton:
             return
-        # Sample pixel from the canvas at click position
         document = self._controller.document
         store = self._controller.data_store
         if document is None or store is None:
             return
-        layer = next((la for la in document.layers if la.buffer_id is not None), None)
-        if layer is None or layer.buffer_id is None:
-            return
         try:
-            arr = store.get(layer.buffer_id)
-            # Map widget coordinates to image coordinates
             pos = event.position().toPoint()
-            img_w = document.image.width
-            img_h = document.image.height
-            canvas_w = max(1, self._canvas.width())
-            canvas_h = max(1, self._canvas.height())
-            ix = int(pos.x() / canvas_w * img_w)
-            iy = int(pos.y() / canvas_h * img_h)
-            ix = max(0, min(ix, img_w - 1))
-            iy = max(0, min(iy, img_h - 1))
+            ix, iy = self._canvas.widget_to_image_pos(
+                pos, document.image.width, document.image.height
+            )
+            active_id = getattr(self._controller, "active_layer_id", None)
+            layer = next(
+                (la for la in document.layers if la.id == active_id and la.buffer_id),
+                None,
+            )
+            if layer is not None and layer.buffer_id is not None:
+                arr = store.get(layer.buffer_id)
+            else:
+                renderer = getattr(self._controller, "_renderer", None)
+                render_raw = getattr(renderer, "render_raw", None)
+                arr = (
+                    render_raw(
+                        RenderRequest(
+                            str(document.id), document.image.width, document.image.height
+                        )
+                    )
+                    if callable(render_raw)
+                    else None
+                )
+                if arr is None:
+                    layer = next(
+                        (la for la in reversed(document.layers) if la.buffer_id), None
+                    )
+                    if layer is None or layer.buffer_id is None:
+                        return
+                    arr = store.get(layer.buffer_id)
             if arr.ndim == 3:
                 r, g, b = int(arr[iy, ix, 0]), int(arr[iy, ix, 1]), int(arr[iy, ix, 2])
                 alpha = int(arr[iy, ix, 3]) if arr.shape[2] == 4 else 255
@@ -1684,7 +1699,7 @@ class MainWindow(QMainWindow):
         # Brush colour: use foreground colour from sidebar if available.
         color = (0, 0, 0, 255)  # black default
         try:
-            color = self._sidebar.foreground_color_rgba  # type: ignore[attr-defined]
+            color = self._tool_panel.foreground_rgba
         except AttributeError:
             pass
         result = self._controller.paint_stroke(points, color, size=20, hardness=0.8, opacity=1.0)
@@ -1733,7 +1748,7 @@ class MainWindow(QMainWindow):
             ix, iy = self._canvas.widget_to_image_pos(pos, doc.image.width, doc.image.height)
             color = (0, 0, 0, 255)
             try:
-                color = self._sidebar.foreground_color_rgba  # type: ignore[attr-defined]
+                color = self._tool_panel.foreground_rgba
             except AttributeError:
                 pass
             result = self._controller.flood_fill(ix, iy, color, tolerance=15)
@@ -2797,7 +2812,12 @@ class MainWindow(QMainWindow):
         application = QApplication.instance()
         if application is not None:
             application.setPalette(palette_for(self._tokens))
-            application.setStyleSheet(stylesheet_for(self._tokens))
+            application_style = stylesheet_for(self._tokens)
+            # Applying a large application stylesheet reparses and polishes
+            # every widget. Repeating that work for each MainWindow created by
+            # the filter integration suite can starve the Qt event loop.
+            if application.styleSheet() != application_style:
+                application.setStyleSheet(application_style)
         self.setStyleSheet(
             stylesheet_for(self._tokens)
             + f"""
