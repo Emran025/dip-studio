@@ -72,6 +72,19 @@ def _recovery_files_for(
     return tuple(paths)
 
 
+def _recovery_generation(path: Path) -> int:
+    """Return the generation encoded in a recovery filename.
+
+    The unnumbered recovery file is generation one.  Generation numbers are
+    the authoritative ordering because Windows can assign the same
+    ``st_mtime_ns`` to files written in quick succession.
+    """
+    match = re.search(r"_recovery(?:_(\d+))?\.dip$", path.name)
+    if match is None:
+        return 0
+    return int(match.group(1) or "1")
+
+
 def discover_recovery_files(
     document_name: str | None = None,
     *,
@@ -156,6 +169,14 @@ def cleanup_recovery_files(
             continue
         valid_paths.append(candidate)
 
+    valid_paths.sort(
+        key=lambda item: (
+            _recovery_generation(item),
+            item.stat().st_mtime_ns,
+            item.name,
+        ),
+        reverse=True,
+    )
     kept = valid_paths[:max_generations]
     for path in set(stale_paths) | set(valid_paths[max_generations:]):
         try:
