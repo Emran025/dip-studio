@@ -44,7 +44,7 @@ class ToolPanel(QWidget):
         ("Vector", ("text",)),
         ("Analysis", ("histogram", "threshold", "morphology", "segment")),
         (
-            "Segmentation",
+            "Segmentation & Detection",
             (
                 "watershed",
                 "region_growing",
@@ -53,9 +53,11 @@ class ToolPanel(QWidget):
                 "connected_components",
                 "grabcut",
                 "active_contours",
+                "template_match",
+                "hough_circles",
+                "hough_lines",
             ),
         ),
-        ("Detection", ("template_match", "hough_circles", "hough_lines")),
     )
 
     def __init__(self, tools: tuple[ToolDefinition, ...], parent: QWidget | None = None) -> None:
@@ -122,8 +124,10 @@ class ToolPanel(QWidget):
             return
         self._selected_tool_id = tool.id
         button.setChecked(True)
-        button.setIcon(icon_for(tool.id, prefer_vector=tool.id in self._ANALYSIS_TOOL_IDS))
+        button.setIcon(icon_for(tool.id))
         button.setToolTip(f"{tool.name}\n{tool.description}")
+        button.setAccessibleName(tool.name)
+        button.setStatusTip(tool.description)
         if emit:
             self.toolSelected.emit(tool.id)
 
@@ -145,13 +149,10 @@ class ToolPanel(QWidget):
         button.setCheckable(True)
         button.setAutoRaise(False)
         button.setIcon(
-            icon_for(
-                tools[0].id,
-                prefer_vector=tools[0].id in self._ANALYSIS_TOOL_IDS,
-            )
+            icon_for(tools[0].id)
         )
-        button.setIconSize(QSize(17, 17))
-        button.setFixedSize(44, 44)
+        button.setIconSize(QSize(22, 22))
+        button.setFixedSize(48, 48)
         first_tool_id = tools[0].id
         button.clicked.connect(lambda _checked=False, tid=first_tool_id: self._activate_tool(tid))
         if len(tools) == 1:
@@ -169,10 +170,12 @@ class ToolPanel(QWidget):
             shortcut = f" [{tool.shortcut}]" if tool.shortcut else ""
             tool_button = QToolButton(popup)
             tool_button.setObjectName("toolGridItem")
-            tool_button.setIcon(icon_for(tool.id, prefer_vector=tool.id in self._ANALYSIS_TOOL_IDS))
-            tool_button.setIconSize(QSize(20, 20))
-            tool_button.setFixedSize(34, 34)
+            tool_button.setIcon(icon_for(tool.id))
+            tool_button.setIconSize(QSize(22, 22))
+            tool_button.setFixedSize(42, 42)
             tool_button.setToolTip(f"{tool.name}{shortcut}\n{tool.description}")
+            tool_button.setAccessibleName(tool.name)
+            tool_button.setStatusTip(tool.description)
             tool_id = tool.id
             tool_button.clicked.connect(
                 lambda _checked=False, tid=tool_id, panel=popup: (
@@ -192,11 +195,11 @@ class ToolPanel(QWidget):
         )
         container = QWidget(self)
         container.setObjectName("toolGroupContainer")
-        container.setFixedSize(44, 44)
+        container.setFixedSize(48, 48)
         button.setParent(container)
         arrow.setParent(container)
         button.move(0, 0)
-        arrow.move(31, 31)
+        arrow.move(35, 35)
         button.raise_()
         arrow.raise_()
         button.setToolTip(f"{group_name} — click the corner arrow to choose a tool")

@@ -116,6 +116,33 @@ class CanvasView(QWidget):
                 return name
         return None
 
+    @staticmethod
+    def _resize_rect_from_corner(
+        rect: QRect,
+        handle: str,
+        current: QPoint,
+        bounds: QRect | None = None,
+        minimum: int = 1,
+    ) -> QRect:
+        """Resize a rectangle while keeping it valid and inside ``bounds``."""
+        source = rect.normalized()
+        limit = (bounds or source).normalized()
+        minimum = max(1, int(minimum))
+        left, top = source.left(), source.top()
+        right, bottom = source.right(), source.bottom()
+        x = max(limit.left(), min(limit.right(), current.x()))
+        y = max(limit.top(), min(limit.bottom(), current.y()))
+
+        if "left" in handle:
+            left = max(limit.left(), min(x, right - minimum + 1))
+        if "right" in handle:
+            right = min(limit.right(), max(x, left + minimum - 1))
+        if "top" in handle:
+            top = max(limit.top(), min(y, bottom - minimum + 1))
+        if "bottom" in handle:
+            bottom = min(limit.bottom(), max(y, top + minimum - 1))
+        return QRect(left, top, right - left + 1, bottom - top + 1)
+
     def set_crop_mode(self, enabled: bool) -> None:
         """Activate or deactivate interactive Photoshop-style crop mode."""
         self._is_crop_mode = enabled

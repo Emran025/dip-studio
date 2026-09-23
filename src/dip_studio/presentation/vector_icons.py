@@ -55,6 +55,16 @@ _QTAWESOME_NAMES = {
     "threshold": "mdi6.tune-vertical",
     "morphology": "mdi6.blur",
     "segment": "mdi6.vector-difference",
+    "region_growing": "mdi6.vector-difference",
+    "contour_extract": "mdi6.vector-polyline",
+    "hu_moments": "mdi6.shape-outline",
+    "connected_components": "mdi6.shape-plus-outline",
+    "grabcut": "mdi6.content-cut",
+    "active_contours": "mdi6.vector-polyline",
+    "watershed": "mdi6.waves",
+    "hough_circles": "mdi6.circle-multiple-outline",
+    "hough_lines": "mdi6.vector-line",
+    "template_match": "mdi6.target",
     # Processing tools are displayed in the dynamically-created final group.
     # Keep explicit names here so they do not fall through to the generic
     # circular placeholder when QtAwesome is unavailable.
@@ -65,6 +75,7 @@ _QTAWESOME_NAMES = {
     "gaussian_blur": "mdi6.blur",
     "median_blur": "mdi6.blur-linear",
     "bilateral_filter": "mdi6.blur-radial",
+    "denoise_mean": "mdi6.blur-linear",
     "sobel": "mdi6.chart-line",
     "canny": "mdi6.chart-bell-curve",
     "laplacian": "mdi6.chart-line",
@@ -173,6 +184,16 @@ def _vector_icon_for(name: str, color: str) -> QIcon:
         "threshold": _gradient,
         "morphology": _blur,
         "segment": _selection,
+        "region_growing": _selection,
+        "contour_extract": _lasso,
+        "hu_moments": _shape,
+        "connected_components": _components,
+        "grabcut": _cutout,
+        "active_contours": _lasso,
+        "watershed": _waves,
+        "hough_circles": _circles,
+        "hough_lines": _edge,
+        "template_match": _target,
         "negative": _gradient,
         "gamma": _gradient,
         "log_transform": _edge,
@@ -180,6 +201,7 @@ def _vector_icon_for(name: str, color: str) -> QIcon:
         "gaussian_blur": _blur,
         "median_blur": _blur,
         "bilateral_filter": _blur,
+        "denoise_mean": _blur,
         "sobel": _edge,
         "canny": _edge,
         "laplacian": _edge,
@@ -368,6 +390,59 @@ def _shape(p: QPainter, c: QColor) -> None:
     p.setBrush(Qt.BrushStyle.NoBrush)
     p.drawRect(QRectF(11, 12, 23, 23))
     p.drawEllipse(QPointF(43, 43), 12, 12)
+
+
+def _components(p: QPainter, c: QColor) -> None:
+    """Three connected regions, used for component/object labelling."""
+    p.setPen(_pen(c, 3))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QPointF(22, 22), 9, 9)
+    p.drawEllipse(QPointF(43, 25), 8, 8)
+    p.drawEllipse(QPointF(31, 44), 9, 9)
+    p.drawLine(29, 25, 37, 25)
+    p.drawLine(27, 29, 30, 37)
+    p.drawLine(39, 32, 35, 37)
+
+
+def _cutout(p: QPainter, c: QColor) -> None:
+    """Foreground cutout icon: a subject inside a dashed selection."""
+    p.setPen(QPen(c, 3, Qt.PenStyle.DashLine))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRoundedRect(QRectF(10, 12, 44, 40), 4, 4)
+    p.setPen(_pen(c, 3.5))
+    p.drawEllipse(QPointF(32, 25), 8, 8)
+    p.drawArc(QRectF(20, 28, 24, 20), 20 * 16, 140 * 16)
+    p.drawLine(43, 43, 54, 54)
+
+
+def _waves(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3.5))
+    for offset in (0, 10, 20):
+        path = QPainterPath(QPointF(10, 17 + offset))
+        path.cubicTo(18, 7 + offset, 26, 27 + offset, 34, 17 + offset)
+        path.cubicTo(42, 7 + offset, 50, 27 + offset, 56, 17 + offset)
+        p.drawPath(path)
+
+
+def _circles(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3.5))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QPointF(24, 27), 13, 13)
+    p.drawEllipse(QPointF(42, 40), 9, 9)
+    p.drawLine(14, 50, 50, 14)
+
+
+def _target(p: QPainter, c: QColor) -> None:
+    p.setPen(_pen(c, 3))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QPointF(32, 32), 21, 21)
+    p.drawEllipse(QPointF(32, 32), 11, 11)
+    p.setBrush(c)
+    p.drawEllipse(QPointF(32, 32), 3, 3)
+    p.drawLine(32, 7, 32, 14)
+    p.drawLine(32, 50, 32, 57)
+    p.drawLine(7, 32, 14, 32)
+    p.drawLine(50, 32, 57, 32)
 
 
 def _sidebar(p: QPainter, c: QColor) -> None:

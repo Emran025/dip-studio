@@ -38,9 +38,10 @@ def test_segmentation_and_detection_are_exposed_in_properties_and_toolbar() -> N
         "hough_lines",
     } <= definitions.keys()
     groups = dict(ToolPanel._GROUPS)
-    assert groups["Detection"] == ("template_match", "hough_circles", "hough_lines")
-    assert "watershed" in groups["Segmentation"]
-    assert "connected_components" in groups["Segmentation"]
+    combined = groups["Segmentation & Detection"]
+    assert combined[-3:] == ("template_match", "hough_circles", "hough_lines")
+    assert "watershed" in combined
+    assert "connected_components" in combined
 
 
 def test_segmentation_processors_preserve_image_bounds_and_shape() -> None:
