@@ -3,6 +3,7 @@
 All commands follow the Command Protocol (execute / undo) and live in the
 application layer.  No Qt / PySide6 imports are allowed here.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -11,7 +12,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from dip_studio.application.session import DocumentSession
-from dip_studio.domain.model import Layer, LayerId
+from dip_studio.domain.model import LayerId
 
 if TYPE_CHECKING:
     from dip_studio.infrastructure.data_store import ImageDataStore
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Brush stamp helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_stamp(size: int, hardness: float) -> np.ndarray:
     """Create a (size × size) float32 circular brush stamp in [0, 1].
@@ -32,7 +34,7 @@ def _make_stamp(size: int, hardness: float) -> np.ndarray:
     half = size / 2.0
     ax = np.arange(size, dtype=np.float32) - half + 0.5
     yy, xx = np.meshgrid(ax, ax, indexing="ij")
-    dist = np.sqrt(yy ** 2 + xx ** 2)
+    dist = np.sqrt(yy**2 + xx**2)
     # Gaussian sigma scaled by (1 - hardness)
     sigma = radius * max(1e-3, 1.0 - hardness)
     stamp = np.exp(-0.5 * (dist / sigma) ** 2)
@@ -73,9 +75,7 @@ def _paint_stamp(
     cr, cg, cb, ca = color
     # Normal blend: out = src_alpha * src_color + (1 - src_alpha) * dst_color
     for ch_idx, val in enumerate((cr, cg, cb)):
-        region[:, :, ch_idx] = (
-            alpha_mask * val + (1.0 - alpha_mask) * region[:, :, ch_idx]
-        )
+        region[:, :, ch_idx] = alpha_mask * val + (1.0 - alpha_mask) * region[:, :, ch_idx]
     # Combine alpha channels (max of existing and brush)
     region[:, :, 3] = np.maximum(region[:, :, 3], alpha_mask * ca)
     arr[sy0:sy1, sx0:sx1] = np.clip(region, 0, 255).astype(np.uint8)
@@ -105,13 +105,15 @@ def _erase_stamp(
     alpha_mask = stamp[ty0:ty1, tx0:tx1] * opacity
     arr[sy0:sy1, sx0:sx1, 3] = np.clip(
         arr[sy0:sy1, sx0:sx1, 3].astype(np.float32) * (1.0 - alpha_mask),
-        0, 255,
+        0,
+        255,
     ).astype(np.uint8)
 
 
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
 
 class PaintStroke:
     """Paint a brush stroke into the active layer buffer.
@@ -131,7 +133,7 @@ class PaintStroke:
 
     def __init__(
         self,
-        data_store: "ImageDataStore",
+        data_store: ImageDataStore,
         layer_id: LayerId,
         points: list[tuple[int, int]],
         color: tuple[int, int, int, int],
@@ -207,7 +209,7 @@ class EraserStroke:
 
     def __init__(
         self,
-        data_store: "ImageDataStore",
+        data_store: ImageDataStore,
         layer_id: LayerId,
         points: list[tuple[int, int]],
         size: int = 20,
@@ -282,7 +284,7 @@ class FloodFill:
 
     def __init__(
         self,
-        data_store: "ImageDataStore",
+        data_store: ImageDataStore,
         layer_id: LayerId,
         x: int,
         y: int,

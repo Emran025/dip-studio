@@ -1,8 +1,7 @@
 """Photoshop-style right workspace sidebar with navigable panel tabs."""
 
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
-from PySide6.QtGui import QKeyEvent
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QKeyEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -12,18 +11,18 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
-    QMenu,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from dip_studio.application.presentation_bridge import is_group_layer
 from dip_studio.presentation.dialogs import ToolParametersPanel
 from dip_studio.presentation.panel_group import PanelGroup
-from dip_studio.application.presentation_bridge import is_group_layer
 from dip_studio.presentation.vector_icons import icon_for
 
 
@@ -197,9 +196,7 @@ class RightSidebar(QWidget):
             ("layer.down", "down", "Move layer down"),
         ):
             button = QToolButton()
-            button.setObjectName(
-                "removeLayerButton" if action == "remove" else "layerActionButton"
-            )
+            button.setObjectName("removeLayerButton" if action == "remove" else "layerActionButton")
             button.setIcon(icon_for(icon_name))
             button.setIconSize(QSize(12, 12))
             button.setFixedSize(36, 30)
@@ -246,17 +243,13 @@ class RightSidebar(QWidget):
                 | Qt.ItemFlag.ItemIsEnabled
             )
             item.setCheckState(
-                Qt.CheckState.Checked
-                if str(layer.id) in selected_keys
-                else Qt.CheckState.Unchecked
+                Qt.CheckState.Checked if str(layer.id) in selected_keys else Qt.CheckState.Unchecked
             )
             if str(layer.id) in selected_keys:
                 item.setSelected(True)
                 self.layers.setCurrentItem(item)
             if is_group_layer(layer):
-                item.setChildIndicatorPolicy(
-                    QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
-                )
+                item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
                 for child_id in getattr(layer, "children", ()):
                     child = by_id.get(child_id)
                     if child is not None:
@@ -396,18 +389,22 @@ class RightSidebar(QWidget):
     def _layer_selected(self, row: int) -> None:
         item = self.layers.currentItem()
         if item is not None:
-            row = self.layers.indexOfTopLevelItem(item)
+            self.layers.indexOfTopLevelItem(item)
             self.layer_opacity.blockSignals(True)
             self.layer_blend_mode.blockSignals(True)
             self.layer_lock_button.blockSignals(True)
-            layer = next(
-                (
-                    candidate
-                    for candidate in self.layers_data
-                    if candidate.id == item.data(Qt.ItemDataRole.UserRole)
-                ),
-                None,
-            ) if item is not None else None
+            layer = (
+                next(
+                    (
+                        candidate
+                        for candidate in self.layers_data
+                        if candidate.id == item.data(Qt.ItemDataRole.UserRole)
+                    ),
+                    None,
+                )
+                if item is not None
+                else None
+            )
             if layer is not None:
                 self.layer_opacity.setValue(layer.opacity)
                 blend = getattr(layer, "blend_mode", "normal")
@@ -452,9 +449,7 @@ class RightSidebar(QWidget):
                 item.setSelected(selected)
                 item.setCheckState(
                     0,
-                    Qt.CheckState.Checked
-                    if selected
-                    else Qt.CheckState.Unchecked,
+                    Qt.CheckState.Checked if selected else Qt.CheckState.Unchecked,
                 )
                 if selected and first is None:
                     first = item
@@ -488,8 +483,7 @@ class RightSidebar(QWidget):
         self.layer_lock_button.setIcon(icon_for("layer.lock" if checked else "layer.unlock"))
         if self._layer_callback is not None and self.layers.currentItem() is not None:
             selected = tuple(
-                item.data(Qt.ItemDataRole.UserRole)
-                for item in self.layers.selectedItems()
+                item.data(Qt.ItemDataRole.UserRole) for item in self.layers.selectedItems()
             )
             if selected:
                 self._layer_callback(selected, None, None, None, checked)
@@ -499,9 +493,7 @@ class RightSidebar(QWidget):
         return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
 
     def selected_layer_ids(self) -> tuple[object, ...]:
-        return tuple(
-            item.data(Qt.ItemDataRole.UserRole) for item in self.layers.selectedItems()
-        )
+        return tuple(item.data(Qt.ItemDataRole.UserRole) for item in self.layers.selectedItems())
 
     def select_layer(self, layer_id: object, *, additive: bool = False) -> None:
         selected = list(self.selected_layer_ids()) if additive else []
@@ -533,7 +525,7 @@ class RightSidebar(QWidget):
         self.history.currentRowChanged.connect(self._history_row_changed)
 
     def _history_row_changed(self, row: int) -> None:
-        if hasattr(self, '_history_jump_callback') and self._history_jump_callback is not None:
+        if hasattr(self, "_history_jump_callback") and self._history_jump_callback is not None:
             self._history_jump_callback(row)
 
     def set_channel_callback(self, callback) -> None:
@@ -542,23 +534,24 @@ class RightSidebar(QWidget):
         self.channels.currentRowChanged.connect(self._channel_row_changed)
 
     def _channel_row_changed(self, row: int) -> None:
-        if hasattr(self, '_channel_callback') and self._channel_callback is not None:
+        if hasattr(self, "_channel_callback") and self._channel_callback is not None:
             self._channel_callback(row)
 
     def update_navigator(self, thumbnail_data: bytes | None, zoom: float) -> None:
         """Update navigator thumbnail and zoom label."""
         if thumbnail_data is None:
-            self.navigator.setText(f"Zoom: {zoom*100:.0f}%")
+            self.navigator.setText(f"Zoom: {zoom * 100:.0f}%")
             return
         pixmap = QPixmap()
         if pixmap.loadFromData(thumbnail_data):
             scaled = pixmap.scaled(
-                200, 120,
+                200,
+                120,
                 Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
+                Qt.TransformationMode.SmoothTransformation,
             )
             self.navigator.setPixmap(scaled)
-        self.navigator.setToolTip(f"Zoom: {zoom*100:.0f}%")
+        self.navigator.setToolTip(f"Zoom: {zoom * 100:.0f}%")
 
     def select_panel(self, name: str) -> None:
         for index in range(self.tabs.count()):

@@ -1,4 +1,5 @@
 """Infrastructure adapter for decoding preview bytes into RGBA arrays."""
+
 from __future__ import annotations
 
 from typing import Any

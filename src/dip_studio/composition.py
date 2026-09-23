@@ -1,4 +1,5 @@
 """Application composition root for the desktop runtime."""
+
 from __future__ import annotations
 
 import logging
@@ -12,12 +13,12 @@ from dip_studio.application.tool_registry import (
 )
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.infrastructure.image_import import ImageFormatRegistry
+from dip_studio.infrastructure.plugin_runtime import discover_and_activate_plugins
 from dip_studio.infrastructure.processing_cache import ProcessingCache
 from dip_studio.infrastructure.zip_project_store import ZipProjectStore
-from dip_studio.infrastructure.plugin_runtime import discover_and_activate_plugins
 from dip_studio.presentation.main_window import MainWindow
-from dip_studio.processing.registry import build_processing_engine
 from dip_studio.processing.plugins import global_registry
+from dip_studio.processing.registry import build_processing_engine
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ def create_main_window() -> MainWindow:
     # Start periodic autosave (every 2 minutes) after the window is ready.
     try:
         from dip_studio.infrastructure.autosave import AutosaveWorker
+
         autosave = AutosaveWorker(controller, interval_seconds=120)
         autosave.start()
         # Keep a reference so the worker isn't GC'd.
@@ -84,9 +86,7 @@ def _plugin_directories() -> tuple[Path, ...]:
     if not configured:
         return ()
     return tuple(
-        Path(entry).expanduser()
-        for entry in configured.split(os.pathsep)
-        if entry.strip()
+        Path(entry).expanduser() for entry in configured.split(os.pathsep) if entry.strip()
     )
 
 

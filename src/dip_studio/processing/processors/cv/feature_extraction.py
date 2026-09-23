@@ -9,24 +9,33 @@ reported explicitly instead of returning a successful no-op.
 
 Architecture: doc-12 Computer Vision, doc-07 description/recognition.
 """
+
 from __future__ import annotations
 
 import importlib.util
 
 import numpy as np
 
-from dip_studio.processing.processors._base import BaseProcessor
-from dip_studio.processing.contracts import FeatureResult, ProcessingRequest
 from dip_studio.core.errors import OptionalBackendError
+from dip_studio.processing.contracts import FeatureResult, ProcessingRequest
+from dip_studio.processing.processors._base import BaseProcessor
 
 _CV2 = importlib.util.find_spec("cv2") is not None
 
 
-def _feature_result(algorithm: str, keypoints: list, descriptors: object | None, *, extra: dict[str, float | int | str] | None = None) -> FeatureResult:
+def _feature_result(
+    algorithm: str,
+    keypoints: list,
+    descriptors: object | None,
+    *,
+    extra: dict[str, float | int | str] | None = None,
+) -> FeatureResult:
     metrics: dict[str, float | int | str] = {
         "algorithm": algorithm,
         "keypoints": len(keypoints),
-        "descriptor_dim": int(getattr(descriptors, "shape", (0, 0))[1]) if descriptors is not None and hasattr(descriptors, "shape") and len(descriptors.shape) > 1 else 0,
+        "descriptor_dim": int(getattr(descriptors, "shape", (0, 0))[1])
+        if descriptors is not None and hasattr(descriptors, "shape") and len(descriptors.shape) > 1
+        else 0,
     }
     if extra:
         metrics.update(extra)
@@ -72,14 +81,17 @@ class SiftProcessor(BaseProcessor):
         gray = _to_gray(arr)
         sift = cv2.SIFT_create(nfeatures=n_features)  # type: ignore[attr-defined]
         keypoints, descriptors = sift.detectAndCompute(gray, None)
-        print(f"[SIFT] Detected {len(keypoints)} keypoints | "
-              f"descriptor shape: {descriptors.shape if descriptors is not None else 'None'}")
+        print(
+            f"[SIFT] Detected {len(keypoints)} keypoints | "
+            f"descriptor shape: {descriptors.shape if descriptors is not None else 'None'}"
+        )
 
         if draw and keypoints:
             result = _ensure_rgba(arr)
             bgr = cv2.cvtColor(result[:, :, :3], cv2.COLOR_RGB2BGR)
-            drawn = cv2.drawKeypoints(bgr, keypoints, None,
-                                      flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            drawn = cv2.drawKeypoints(
+                bgr, keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+            )
             result[:, :, :3] = cv2.cvtColor(drawn, cv2.COLOR_BGR2RGB)
             _ = result
         return _feature_result("sift", keypoints, descriptors, extra={"drawn": int(draw)})
@@ -105,8 +117,10 @@ class OrbProcessor(BaseProcessor):
         gray = _to_gray(arr)
         orb = cv2.ORB_create(nfeatures=n_features)
         keypoints, descriptors = orb.detectAndCompute(gray, None)
-        print(f"[ORB] Detected {len(keypoints)} keypoints | "
-              f"descriptor shape: {descriptors.shape if descriptors is not None else 'None'}")
+        print(
+            f"[ORB] Detected {len(keypoints)} keypoints | "
+            f"descriptor shape: {descriptors.shape if descriptors is not None else 'None'}"
+        )
 
         if keypoints:
             result = _ensure_rgba(arr)
@@ -147,7 +161,9 @@ class FastProcessor(BaseProcessor):
             drawn = cv2.drawKeypoints(bgr, keypoints, None, color=(255, 0, 0))
             result[:, :, :3] = cv2.cvtColor(drawn, cv2.COLOR_BGR2RGB)
             _ = result
-        return _feature_result("fast", keypoints, None, extra={"threshold": threshold, "non_max": int(non_max)})
+        return _feature_result(
+            "fast", keypoints, None, extra={"threshold": threshold, "non_max": int(non_max)}
+        )
 
 
 class GlcmTextureProcessor(BaseProcessor):
@@ -173,6 +189,7 @@ class GlcmTextureProcessor(BaseProcessor):
         distances = [int(d.strip()) for d in distances_str.split(",") if d.strip()]
         angles_deg = [float(a.strip()) for a in angles_str.split(",") if a.strip()]
         import math
+
         angles_rad = [math.radians(a) for a in angles_deg]
 
         gray = _to_gray(arr)
@@ -180,9 +197,23 @@ class GlcmTextureProcessor(BaseProcessor):
         skimage_available = importlib.util.find_spec("skimage") is not None
         if skimage_available:
             from skimage.feature import graycomatrix, graycoprops  # type: ignore
-            glcm = graycomatrix(gray, distances=distances, angles=angles_rad,
-                                levels=256, symmetric=True, normed=True)
-            for prop in ("contrast", "dissimilarity", "homogeneity", "energy", "correlation", "ASM"):
+
+            glcm = graycomatrix(
+                gray,
+                distances=distances,
+                angles=angles_rad,
+                levels=256,
+                symmetric=True,
+                normed=True,
+            )
+            for prop in (
+                "contrast",
+                "dissimilarity",
+                "homogeneity",
+                "energy",
+                "correlation",
+                "ASM",
+            ):
                 values = graycoprops(glcm, prop)
                 print(f"[GLCM] {prop}: {values.tolist()}")
         else:

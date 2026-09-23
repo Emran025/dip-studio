@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtCore import QByteArray, QEvent, QPoint, QSettings, Qt
+from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, QSettings, Qt
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -45,8 +45,8 @@ from dip_studio.application.shortcut_registry import (
 )
 from dip_studio.application.tool_registry import ToolDefinition
 from dip_studio.core.errors import CancellationError, OptionalBackendError
-from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.presentation.background_worker import BackgroundWorker
+from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.presentation.dialogs import (
     CommandPaletteDialog,
     ExportDialog,
@@ -187,7 +187,9 @@ class MainWindow(QMainWindow):
         self._move_layer_down_action.setShortcut(QKeySequence(self._shortcut("layer.move_down")))
         self._move_layer_down_action.triggered.connect(lambda: self._move_selected_layer(1))
         self._toggle_layer_visibility_action = QAction("Toggle layer visibility", self)
-        self._toggle_layer_visibility_action.setShortcut(QKeySequence(self._shortcut("layer.toggle_visibility")))
+        self._toggle_layer_visibility_action.setShortcut(
+            QKeySequence(self._shortcut("layer.toggle_visibility"))
+        )
         self._toggle_layer_visibility_action.triggered.connect(self._toggle_selected_visibility)
         self._rename_layer_action = QAction("Rename selected layer", self)
         self._rename_layer_action.setShortcut(QKeySequence(self._shortcut("layer.rename")))
@@ -205,16 +207,16 @@ class MainWindow(QMainWindow):
         self._cut_layers_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self._cut_layers_action.triggered.connect(self._cut_selection_or_layers)
         self._copy_paste_action = QAction("Copy and paste in place", self)
-        self._copy_paste_action.setShortcut(
-            QKeySequence(self._shortcut("layer.copy_paste"))
-        )
+        self._copy_paste_action.setShortcut(QKeySequence(self._shortcut("layer.copy_paste")))
         self._copy_paste_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self._copy_paste_action.triggered.connect(self._copy_paste_in_place)
         self._theme_action = QAction("Toggle theme", self)
         self._theme_action.triggered.connect(self._toggle_theme)
         self._command_action = QAction("Command palette", self)
         self._command_action.setIcon(icon_for("command"))
-        self._command_action.setShortcut(QKeySequence(self._shortcut("application.command_palette")))
+        self._command_action.setShortcut(
+            QKeySequence(self._shortcut("application.command_palette"))
+        )
         self._command_action.triggered.connect(self._show_command_palette)
         self._shortcut_editor_action = QAction("Keyboard shortcuts", self)
         self._shortcut_editor_action.triggered.connect(self._show_shortcut_editor)
@@ -386,12 +388,9 @@ class MainWindow(QMainWindow):
                 self._shortcuts.register(ShortcutBinding(command_id, shortcut, "Tool", 20))
             action.setShortcut(QKeySequence(shortcut))
         command_id = f"tool.{tool_id}"
-        self._register_ui_command(
-            command_id, lambda value=tool_id: self._select_tool(value)
-        )
+        self._register_ui_command(command_id, lambda value=tool_id: self._select_tool(value))
         action.triggered.connect(
-            lambda _checked=False, command_id=command_id:
-            self._dispatch_ui_command(command_id)
+            lambda _checked=False, command_id=command_id: self._dispatch_ui_command(command_id)
         )
         return action
 
@@ -404,9 +403,14 @@ class MainWindow(QMainWindow):
     ) -> Callable[[], None]:
         command_id = f"processing.{operation}.dialog" if dialog else f"processing.{operation}"
         if dialog:
-            handler = lambda: self._apply_filter_dialog(operation)
+
+            def handler():
+                return self._apply_filter_dialog(operation)
         else:
-            handler = lambda: self._quick_apply(operation, parameters)
+
+            def handler():
+                return self._quick_apply(operation, parameters)
+
         self._register_ui_command(command_id, handler)
         return lambda _checked=False, command_id=command_id: self._dispatch_ui_command(command_id)
 
@@ -433,10 +437,7 @@ class MainWindow(QMainWindow):
             action.triggered.connect(
                 lambda _checked=False, name=profile_name: self._switch_shortcut_profile(name)
             )
-        self._profile_actions = {
-            action.text(): action
-            for action in profile_menu.actions()
-        }
+        self._profile_actions = {action.text(): action for action in profile_menu.actions()}
         view_menu.addAction(self._workspace_action)
         view_menu.addSeparator()
         view_menu.addAction(self._zoom_in_action)
@@ -485,8 +486,12 @@ class MainWindow(QMainWindow):
         image_menu.addAction("Rotate 90° CCW").triggered.connect(lambda: self._rotate_image(-90))
         image_menu.addAction("Rotate 180°").triggered.connect(lambda: self._rotate_image(180))
         image_menu.addSeparator()
-        image_menu.addAction("Flip Horizontal").triggered.connect(lambda: self._flip_image('horizontal'))
-        image_menu.addAction("Flip Vertical").triggered.connect(lambda: self._flip_image('vertical'))
+        image_menu.addAction("Flip Horizontal").triggered.connect(
+            lambda: self._flip_image("horizontal")
+        )
+        image_menu.addAction("Flip Vertical").triggered.connect(
+            lambda: self._flip_image("vertical")
+        )
 
         layer_menu = self.menuBar().addMenu("Layer")
         layer_menu.addAction(self._add_layer_action)
@@ -524,14 +529,10 @@ class MainWindow(QMainWindow):
         edge_menu.addAction("Canny...").triggered.connect(
             self._processing_action("canny", {}, dialog=True)
         )
-        edge_menu.addAction("Laplacian").triggered.connect(
-            self._processing_action("laplacian", {})
-        )
+        edge_menu.addAction("Laplacian").triggered.connect(self._processing_action("laplacian", {}))
 
         adjust_menu = filter_menu.addMenu("Adjust")
-        adjust_menu.addAction("Negative").triggered.connect(
-            self._processing_action("negative", {})
-        )
+        adjust_menu.addAction("Negative").triggered.connect(self._processing_action("negative", {}))
         adjust_menu.addAction("Gamma...").triggered.connect(
             self._processing_action("gamma", {}, dialog=True)
         )
@@ -553,12 +554,8 @@ class MainWindow(QMainWindow):
         morph_menu = filter_menu.addMenu("Morphology")
         morph_menu.addAction("Erode").triggered.connect(self._processing_action("erode", {}))
         morph_menu.addAction("Dilate").triggered.connect(self._processing_action("dilate", {}))
-        morph_menu.addAction("Open").triggered.connect(
-            self._processing_action("morph_open", {})
-        )
-        morph_menu.addAction("Close").triggered.connect(
-            self._processing_action("morph_close", {})
-        )
+        morph_menu.addAction("Open").triggered.connect(self._processing_action("morph_open", {}))
+        morph_menu.addAction("Close").triggered.connect(self._processing_action("morph_close", {}))
 
         color_menu = filter_menu.addMenu("Color")
         color_menu.addAction("Grayscale").triggered.connect(
@@ -575,9 +572,7 @@ class MainWindow(QMainWindow):
         analysis_menu.addAction(
             "Threshold...", self._processing_action("threshold", {}, dialog=True)
         )
-        analysis_menu.addAction(
-            "Segment...", self._processing_action("segment", {}, dialog=True)
-        )
+        analysis_menu.addAction("Segment...", self._processing_action("segment", {}, dialog=True))
 
         help_menu = self.menuBar().addMenu("Help")
         guide_action = help_menu.addAction("User Guide...")
@@ -603,6 +598,7 @@ class MainWindow(QMainWindow):
 
         # Add tool-name indicator to right of status bar
         from PySide6.QtWidgets import QLabel
+
         self._tool_status_label = QLabel("Tool: —")
         self._tool_status_label.setStyleSheet("padding: 0 8px; font-weight: bold;")
         self.statusBar().addPermanentWidget(self._tool_status_label)
@@ -710,7 +706,9 @@ class MainWindow(QMainWindow):
         else:
             self._preview_parameters(values)
 
-    def _update_layer_properties_panel(self, layer: object, rect: tuple[int, int, int, int]) -> None:
+    def _update_layer_properties_panel(
+        self, layer: object, rect: tuple[int, int, int, int]
+    ) -> None:
         """Populate the Properties panel sidebar with precise element & layer control fields."""
         from dip_studio.application.presentation_bridge import is_group_layer, is_text_layer
 
@@ -721,18 +719,23 @@ class MainWindow(QMainWindow):
         opacity = getattr(layer, "opacity", 1.0)
 
         # If already editing layer properties for the SAME layer, just update values silently
-        if getattr(self, "_is_editing_layer_properties", False) and getattr(self, "_current_properties_layer_id", None) == layer.id:
-            self._sidebar.properties.set_values({
-                "layer_name": layer.name,
-                "pos_x": x,
-                "pos_y": y,
-                "width": w,
-                "height": h,
-                "opacity": opacity,
-                "blend_mode": blend,
-                "visible": visible,
-                "locked": locked,
-            })
+        if (
+            getattr(self, "_is_editing_layer_properties", False)
+            and getattr(self, "_current_properties_layer_id", None) == layer.id
+        ):
+            self._sidebar.properties.set_values(
+                {
+                    "layer_name": layer.name,
+                    "pos_x": x,
+                    "pos_y": y,
+                    "width": w,
+                    "height": h,
+                    "opacity": opacity,
+                    "blend_mode": blend,
+                    "visible": visible,
+                    "locked": locked,
+                }
+            )
             return
 
         layer_type = "Image"
@@ -741,16 +744,26 @@ class MainWindow(QMainWindow):
         elif is_text_layer(layer):
             layer_type = "Text"
         elif getattr(layer, "shape_type", None):
-            layer_type = f"Shape ({getattr(layer, 'shape_type').title()})"
+            layer_type = f"Shape ({layer.shape_type.title()})"
 
         schema = (
             ParameterDefinition("Name", "string", layer.name, id="layer_name"),
             ParameterDefinition("Type", "string", layer_type, read_only=True, id="layer_type"),
-            ParameterDefinition("Position X", "integer", x, minimum=-10000, maximum=10000, id="pos_x"),
-            ParameterDefinition("Position Y", "integer", y, minimum=-10000, maximum=10000, id="pos_y"),
-            ParameterDefinition("Width", "integer", w, minimum=1, maximum=10000, read_only=True, id="width"),
-            ParameterDefinition("Height", "integer", h, minimum=1, maximum=10000, read_only=True, id="height"),
-            ParameterDefinition("Opacity", "number", opacity, minimum=0.0, maximum=1.0, step=0.05, id="opacity"),
+            ParameterDefinition(
+                "Position X", "integer", x, minimum=-10000, maximum=10000, id="pos_x"
+            ),
+            ParameterDefinition(
+                "Position Y", "integer", y, minimum=-10000, maximum=10000, id="pos_y"
+            ),
+            ParameterDefinition(
+                "Width", "integer", w, minimum=1, maximum=10000, read_only=True, id="width"
+            ),
+            ParameterDefinition(
+                "Height", "integer", h, minimum=1, maximum=10000, read_only=True, id="height"
+            ),
+            ParameterDefinition(
+                "Opacity", "number", opacity, minimum=0.0, maximum=1.0, step=0.05, id="opacity"
+            ),
             ParameterDefinition(
                 "Blend Mode",
                 "choice",
@@ -789,7 +802,7 @@ class MainWindow(QMainWindow):
             doc = self._controller.document
             if doc is None:
                 return None, None
-            layer = next((l for l in doc.layers if l.id == layer_id), None)
+            layer = next((layer for layer in doc.layers if layer.id == layer_id), None)
             return doc, layer
 
         doc, layer = get_active_layer()
@@ -815,7 +828,9 @@ class MainWindow(QMainWindow):
         if doc is None or layer is None:
             return
 
-        new_blend = str(values.get("blend_mode", values.get("Blend Mode", layer.blend_mode))).casefold()
+        new_blend = str(
+            values.get("blend_mode", values.get("Blend Mode", layer.blend_mode))
+        ).casefold()
         if new_blend != getattr(layer, "blend_mode", "normal").casefold():
             self._change_layer((layer.id,), blend_mode=new_blend)
 
@@ -831,7 +846,9 @@ class MainWindow(QMainWindow):
         if doc is None or layer is None:
             return
 
-        new_locked = bool(values.get("locked", values.get("Locked", getattr(layer, "locked", False))))
+        new_locked = bool(
+            values.get("locked", values.get("Locked", getattr(layer, "locked", False)))
+        )
         if new_locked != getattr(layer, "locked", False):
             self._change_layer((layer.id,), locked=new_locked)
 
@@ -884,9 +901,15 @@ class MainWindow(QMainWindow):
                 self._current_properties_layer_id = None
                 schema = tuple(
                     ParameterDefinition(
-                        parameter.label, parameter.kind, parameter.default,
-                        parameter.minimum, parameter.maximum, parameter.choices, parameter.id,
-                        read_only=parameter.read_only, step=parameter.step,
+                        parameter.label,
+                        parameter.kind,
+                        parameter.default,
+                        parameter.minimum,
+                        parameter.maximum,
+                        parameter.choices,
+                        parameter.id,
+                        read_only=parameter.read_only,
+                        step=parameter.step,
                     )
                     for parameter in tool.parameters
                 )
@@ -901,7 +924,9 @@ class MainWindow(QMainWindow):
                 doc = self._controller.document
                 selected_ids = self._selected_layer_ids()
                 if doc is not None and selected_ids:
-                    layer = next((l for l in doc.layers if l.id == selected_ids[0]), None)
+                    layer = next(
+                        (layer for layer in doc.layers if layer.id == selected_ids[0]), None
+                    )
                     if layer is not None:
                         rect = self._selected_layer_content_rect(doc, layer.id)
                         self._update_layer_properties_panel(layer, rect)
@@ -918,18 +943,14 @@ class MainWindow(QMainWindow):
             doc = self._controller.document
             if doc is not None:
                 rect = self._selected_layer_content_rect(doc)
-                self._canvas.set_crop_rect_from_image(
-                    *rect, doc.image.width, doc.image.height
-                )
+                self._canvas.set_crop_rect_from_image(*rect, doc.image.width, doc.image.height)
         else:
             self._canvas.set_crop_mode(False)
         # Update canvas cursor based on the active tool
         self._update_canvas_cursor(tool_id)
         # Update status bar
-        self.statusBar().showMessage(
-            f"Tool: {tool.name}  —  {tool.description}", 3000
-        )
-        if hasattr(self, '_tool_status_label'):
+        self.statusBar().showMessage(f"Tool: {tool.name}  —  {tool.description}", 3000)
+        if hasattr(self, "_tool_status_label"):
             self._tool_status_label.setText(f"Tool: {tool.name}")
 
     def _on_crop_committed(self) -> None:
@@ -956,29 +977,25 @@ class MainWindow(QMainWindow):
         self._sidebar.set_selected_layers(selected_ids)
         self._selected_layer_ids_state = selected_ids
         layer_id = selected_ids[0]
-        selected_layers = [
-            layer for layer in doc.layers if layer.id in selected_ids
-        ]
-        layer = next((l for l in doc.layers if l.id == layer_id), None)
+        selected_layers = [layer for layer in doc.layers if layer.id in selected_ids]
+        layer = next((layer for layer in doc.layers if layer.id == layer_id), None)
         if layer is not None:
             self.statusBar().showMessage(f"Active layer: {layer.name}")
             if hasattr(self._controller, "set_active_layer"):
                 self._controller.set_active_layer(layer.id)  # type: ignore[arg-type]
             rect = self._selected_layer_content_rect(doc, layer.id)
-            rects = [
-                self._selected_layer_content_rect(doc, item.id)
-                for item in selected_layers
-            ]
-            self._canvas.set_active_layer_rects(
-                tuple(rects), doc.image.width, doc.image.height
-            )
+            rects = [self._selected_layer_content_rect(doc, item.id) for item in selected_layers]
+            self._canvas.set_active_layer_rects(tuple(rects), doc.image.width, doc.image.height)
             tool = self._selected_tool()
-            if tool is None or not tool.parameters or self._active_tool_id in {
-                "select", "move", "hand", "zoom", "eyedropper", "text"
-            }:
+            if (
+                tool is None
+                or not tool.parameters
+                or self._active_tool_id in {"select", "move", "hand", "zoom", "eyedropper", "text"}
+            ):
                 self._update_layer_properties_panel(layer, rect)
 
             from dip_studio.application.presentation_bridge import is_text_layer
+
             if self._active_tool_id == "text" and is_text_layer(layer):
                 self._show_text_layer_dialog(existing_layer=layer)
             if self._active_tool_id == "crop":
@@ -986,9 +1003,7 @@ class MainWindow(QMainWindow):
                 self._tool_panel.select_tool("crop", emit=False)
                 self._canvas.set_crop_mode(True)
                 self._update_canvas_cursor("crop")
-                self._canvas.set_crop_rect_from_image(
-                    *rect, doc.image.width, doc.image.height
-                )
+                self._canvas.set_crop_rect_from_image(*rect, doc.image.width, doc.image.height)
             elif self._active_tool_id not in {
                 "selection",
                 "ellipse_selection",
@@ -1010,9 +1025,7 @@ class MainWindow(QMainWindow):
         layer = next((item for item in document.layers if item.id == selected[0]), None)
         if layer is None or layer.buffer_id is None:
             if hasattr(layer, "vertices"):
-                x, y, width, height = (
-                    int(round(value)) for value in layer.vertices[:4]
-                )
+                x, y, width, height = (int(round(value)) for value in layer.vertices[:4])
                 transform = getattr(layer, "transform", None)
                 return (
                     x + int(transform.tx if transform else 0),
@@ -1046,41 +1059,53 @@ class MainWindow(QMainWindow):
         if doc is None:
             return
         from PySide6.QtCore import QRect
+
         if not isinstance(rect, QRect) or rect.isNull():
             return
-        ix1, iy1 = self._canvas.widget_to_image_pos(rect.topLeft(), doc.image.width, doc.image.height)
-        ix2, iy2 = self._canvas.widget_to_image_pos(rect.bottomRight(), doc.image.width, doc.image.height)
+        ix1, iy1 = self._canvas.widget_to_image_pos(
+            rect.topLeft(), doc.image.width, doc.image.height
+        )
+        ix2, iy2 = self._canvas.widget_to_image_pos(
+            rect.bottomRight(), doc.image.width, doc.image.height
+        )
         w = max(1, ix2 - ix1)
         h = max(1, iy2 - iy1)
         self.statusBar().showMessage(
             f"Crop: {w}×{h} at ({ix1}, {iy1}) — Press Enter to commit or Esc to cancel"
         )
-        self._sidebar.properties.set_values({
-            "X": ix1, "Y": iy1,
-            "Width": w, "Height": h,
-            "x": ix1, "y": iy1,
-            "width": w, "height": h,
-        })
+        self._sidebar.properties.set_values(
+            {
+                "X": ix1,
+                "Y": iy1,
+                "Width": w,
+                "Height": h,
+                "x": ix1,
+                "y": iy1,
+                "width": w,
+                "height": h,
+            }
+        )
 
     def _update_canvas_cursor(self, tool_id: str) -> None:
         """Set the canvas cursor to match the active tool."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QCursor
+
         cursor_map = {
-            "hand":         Qt.CursorShape.OpenHandCursor,
-            "move":         Qt.CursorShape.SizeAllCursor,
-            "zoom":         Qt.CursorShape.SizeBDiagCursor,
-            "crop":         Qt.CursorShape.CrossCursor,
-            "eyedropper":   Qt.CursorShape.CrossCursor,
-            "text":         Qt.CursorShape.IBeamCursor,
-            "rotate":       Qt.CursorShape.SizeHorCursor,
-            "brush":        Qt.CursorShape.CrossCursor,
-            "pencil":       Qt.CursorShape.CrossCursor,
-            "eraser":       Qt.CursorShape.BlankCursor,
-            "fill":         Qt.CursorShape.PointingHandCursor,
-            "selection":    Qt.CursorShape.CrossCursor,
+            "hand": Qt.CursorShape.OpenHandCursor,
+            "move": Qt.CursorShape.SizeAllCursor,
+            "zoom": Qt.CursorShape.SizeBDiagCursor,
+            "crop": Qt.CursorShape.CrossCursor,
+            "eyedropper": Qt.CursorShape.CrossCursor,
+            "text": Qt.CursorShape.IBeamCursor,
+            "rotate": Qt.CursorShape.SizeHorCursor,
+            "brush": Qt.CursorShape.CrossCursor,
+            "pencil": Qt.CursorShape.CrossCursor,
+            "eraser": Qt.CursorShape.BlankCursor,
+            "fill": Qt.CursorShape.PointingHandCursor,
+            "selection": Qt.CursorShape.CrossCursor,
             "ellipse_selection": Qt.CursorShape.CrossCursor,
-            "lasso":        Qt.CursorShape.CrossCursor,
+            "lasso": Qt.CursorShape.CrossCursor,
             "polygon_selection": Qt.CursorShape.CrossCursor,
             "shape_rectangle": Qt.CursorShape.CrossCursor,
             "shape_ellipse": Qt.CursorShape.CrossCursor,
@@ -1149,16 +1174,16 @@ class MainWindow(QMainWindow):
             if hit_layer is not None:
                 self._sidebar.select_layer(
                     hit_layer.id,
-                    additive=bool(
-                        event.modifiers() & Qt.KeyboardModifier.ShiftModifier
-                    ),
+                    additive=bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier),
                 )
                 self._on_layer_selection_changed(self._selected_layer_ids())
                 handle = self._canvas.active_layer_handle_at(pos)
                 if handle is not None and getattr(hit_layer, "shape_type", None):
                     self._resize_handle = handle
             self._move_drag_start = (ix, iy)
-            self._canvas.setCursor(Qt.CursorShape.ClosedHandCursor if hit_layer else Qt.CursorShape.SizeAllCursor)
+            self._canvas.setCursor(
+                Qt.CursorShape.ClosedHandCursor if hit_layer else Qt.CursorShape.SizeAllCursor
+            )
 
         elif event_type == "move" and getattr(self, "_move_drag_start", None) is not None:
             start_x, start_y = self._move_drag_start
@@ -1168,7 +1193,7 @@ class MainWindow(QMainWindow):
                 selected = self._selected_layer_ids()
                 if selected:
                     target_id = selected[0]
-                    layer = next((l for l in doc.layers if l.id == target_id), None)
+                    layer = next((layer for layer in doc.layers if layer.id == target_id), None)
                     if layer is not None and not layer.locked:
                         if self._resize_handle is not None and getattr(layer, "shape_type", None):
                             left, top, width, height = self._selected_layer_content_rect(
@@ -1204,6 +1229,7 @@ class MainWindow(QMainWindow):
         """Zoom tool: left-click zooms in, right-click zooms out."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QMouseEvent
+
         if not isinstance(event, QMouseEvent):
             return
         if event_type == "press":
@@ -1242,7 +1268,6 @@ class MainWindow(QMainWindow):
           ``lasso``              → freehand polygon (move → accumulate points)
           ``polygon_selection``  → click-by-click polygon (release = add vertex)
         """
-        from PySide6.QtCore import QRect, Qt
         from PySide6.QtGui import QMouseEvent
 
         if not isinstance(event, QMouseEvent):
@@ -1260,7 +1285,7 @@ class MainWindow(QMainWindow):
             self._polygon_event(event_type, event)
 
     def _rect_selection_event(self, event_type: str, event: object) -> None:
-        """Rectangle / crop drag handler supporting Shift (1:1 aspect ratio) and Alt (center-origin)."""
+        """Rectangle / crop drag handler supporting Shift (1:1 aspect ratio) and Alt (center-origin)."""  # noqa: E501
         from PySide6.QtCore import QRect, Qt
         from PySide6.QtGui import QMouseEvent
 
@@ -1292,7 +1317,9 @@ class MainWindow(QMainWindow):
                 )
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             if self._selection_origin is not None:
-                rect = self._canvas.compute_constrained_rect(self._selection_origin, pos, shift, alt)
+                rect = self._canvas.compute_constrained_rect(
+                    self._selection_origin, pos, shift, alt
+                )
                 doc = self._controller.document
                 if doc is not None and rect.width() > 4 and rect.height() > 4:
                     ix1, iy1 = self._canvas.widget_to_image_pos(
@@ -1335,7 +1362,9 @@ class MainWindow(QMainWindow):
             self._canvas.set_selection_rect(rect, kind="ellipse")
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             if self._selection_origin is not None:
-                rect = self._canvas.compute_constrained_rect(self._selection_origin, pos, shift, alt)
+                rect = self._canvas.compute_constrained_rect(
+                    self._selection_origin, pos, shift, alt
+                )
                 doc = self._controller.document
                 store = self._controller.data_store
                 if doc is not None and store is not None and rect.width() > 4 and rect.height() > 4:
@@ -1349,14 +1378,23 @@ class MainWindow(QMainWindow):
                     bh = max(1, iy2 - iy1)
                     try:
                         from dip_studio.application.presentation_bridge import rasterise_ellipse
+
                         mask = rasterise_ellipse(
-                            doc.image.width, doc.image.height,
-                            ix1 + bw // 2, iy1 + bh // 2, bw // 2, bh // 2,
+                            doc.image.width,
+                            doc.image.height,
+                            ix1 + bw // 2,
+                            iy1 + bh // 2,
+                            bw // 2,
+                            bh // 2,
                         )
                         mask_bid = store.allocate(mask)
                         sel = self._controller.make_selection(
-                            x=ix1, y=iy1, width=bw, height=bh,
-                            kind="ellipse", mask_buffer_id=mask_bid,
+                            x=ix1,
+                            y=iy1,
+                            width=bw,
+                            height=bh,
+                            kind="ellipse",
+                            mask_buffer_id=mask_bid,
                         )
                         self._controller.set_selection(sel)
                         self.statusBar().showMessage(f"Ellipse selection: {bw}×{bh}")
@@ -1417,9 +1455,7 @@ class MainWindow(QMainWindow):
                 rect = QRect(self._shape_origin, pos).normalized()
                 self._canvas.set_selection_rect(rect, kind="line")
             else:
-                rect = self._canvas.compute_constrained_rect(
-                    self._shape_origin, pos, shift, alt
-                )
+                rect = self._canvas.compute_constrained_rect(self._shape_origin, pos, shift, alt)
                 self._canvas.set_selection_rect(rect, kind="rectangle")
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             if getattr(self, "_shape_origin", None) is not None:
@@ -1480,9 +1516,7 @@ class MainWindow(QMainWindow):
                     )
                     if res_doc is not None:
                         active_shape_id = self._controller.active_layer_id
-                        selected_ids = (
-                            (active_shape_id,) if active_shape_id is not None else ()
-                        )
+                        selected_ids = (active_shape_id,) if active_shape_id is not None else ()
                         self._show_document(
                             res_doc,
                             f"Drew {shape_type}",
@@ -1523,6 +1557,7 @@ class MainWindow(QMainWindow):
                 if doc is not None and store is not None and len(pts) >= 3:
                     try:
                         from dip_studio.application.presentation_bridge import rasterise_lasso
+
                         mask = rasterise_lasso(doc.image.width, doc.image.height, pts)
                         mask_bid = store.allocate(mask)
                         xs = [p[0] for p in pts]
@@ -1531,8 +1566,12 @@ class MainWindow(QMainWindow):
                         bw = max(1, max(xs) - x1)
                         bh = max(1, max(ys) - y1)
                         sel = self._controller.make_selection(
-                            x=x1, y=y1, width=bw, height=bh,
-                            kind="lasso", mask_buffer_id=mask_bid,
+                            x=x1,
+                            y=y1,
+                            width=bw,
+                            height=bh,
+                            kind="lasso",
+                            mask_buffer_id=mask_bid,
                         )
                         if hasattr(self._controller, "set_selection"):
                             self._controller.set_selection(sel)  # type: ignore[attr-defined]
@@ -1567,7 +1606,9 @@ class MainWindow(QMainWindow):
                 for x, y in self._poly_points
             )
             self._canvas.set_selection_points(widget_points, kind="polygon")
-            self.statusBar().showMessage(f"Polygon: {len(self._poly_points)} vertices (double-click to close)")
+            self.statusBar().showMessage(
+                f"Polygon: {len(self._poly_points)} vertices (double-click to close)"
+            )
         elif event_type == "double_click":
             pts = getattr(self, "_poly_points", [])
             doc = self._controller.document
@@ -1575,6 +1616,7 @@ class MainWindow(QMainWindow):
             if doc is not None and store is not None and len(pts) >= 3:
                 try:
                     from dip_studio.application.presentation_bridge import rasterise_polygon
+
                     mask = rasterise_polygon(doc.image.width, doc.image.height, pts)
                     mask_bid = store.allocate(mask)
                     xs = [p[0] for p in pts]
@@ -1583,8 +1625,12 @@ class MainWindow(QMainWindow):
                     bw = max(1, max(xs) - x1)
                     bh = max(1, max(ys) - y1)
                     sel = self._controller.make_selection(
-                        x=x1, y=y1, width=bw, height=bh,
-                        kind="polygon", mask_buffer_id=mask_bid,
+                        x=x1,
+                        y=y1,
+                        width=bw,
+                        height=bh,
+                        kind="polygon",
+                        mask_buffer_id=mask_bid,
                     )
                     if hasattr(self._controller, "set_selection"):
                         self._controller.set_selection(sel)  # type: ignore[attr-defined]
@@ -1598,6 +1644,7 @@ class MainWindow(QMainWindow):
         """Eyedropper: click to sample pixel color at cursor position."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QMouseEvent
+
         if not isinstance(event, QMouseEvent):
             return
         if event_type != "press" or event.button() != Qt.MouseButton.LeftButton:
@@ -1623,17 +1670,13 @@ class MainWindow(QMainWindow):
                 render_raw = getattr(renderer, "render_raw", None)
                 arr = (
                     render_raw(
-                        RenderRequest(
-                            str(document.id), document.image.width, document.image.height
-                        )
+                        RenderRequest(str(document.id), document.image.width, document.image.height)
                     )
                     if callable(render_raw)
                     else None
                 )
                 if arr is None:
-                    layer = next(
-                        (la for la in reversed(document.layers) if la.buffer_id), None
-                    )
+                    layer = next((la for la in reversed(document.layers) if la.buffer_id), None)
                     if layer is None or layer.buffer_id is None:
                         return
                     arr = store.get(layer.buffer_id)
@@ -1654,6 +1697,7 @@ class MainWindow(QMainWindow):
         """Histogram tool: clicking shows histogram dialog."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QMouseEvent
+
         if not isinstance(event, QMouseEvent):
             return
         if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
@@ -1667,6 +1711,7 @@ class MainWindow(QMainWindow):
         """Brush / Pencil tools: accumulate stroke points and paint on release."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QMouseEvent
+
         if not isinstance(event, QMouseEvent):
             return
         doc = self._controller.document
@@ -1710,6 +1755,7 @@ class MainWindow(QMainWindow):
         """Eraser tool: reduce alpha of active layer along stroke path."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QMouseEvent
+
         if not isinstance(event, QMouseEvent):
             return
         doc = self._controller.document
@@ -1738,6 +1784,7 @@ class MainWindow(QMainWindow):
         """Fill tool: BFS flood-fill at clicked pixel."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QMouseEvent
+
         if not isinstance(event, QMouseEvent):
             return
         doc = self._controller.document
@@ -1759,6 +1806,7 @@ class MainWindow(QMainWindow):
         """Text tool: left-click opens TextLayerDialog to create / insert a text layer."""
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QMouseEvent
+
         if not isinstance(event, QMouseEvent):
             return
         if event_type != "press" or event.button() != Qt.MouseButton.LeftButton:
@@ -1781,6 +1829,7 @@ class MainWindow(QMainWindow):
         def _on_confirmed(text_layer: object) -> None:
             try:
                 from dip_studio.application.text_commands import AddTextLayer, EditTextLayer
+
                 store = self._controller.data_store
                 if store is None:
                     self.statusBar().showMessage("No active document", 2000)
@@ -1802,7 +1851,6 @@ class MainWindow(QMainWindow):
 
         dlg.textLayerConfirmed.connect(_on_confirmed)
         dlg.exec()
-
 
     def _switch_document(self, document_id: object) -> None:
         try:
@@ -1840,9 +1888,7 @@ class MainWindow(QMainWindow):
                     selected[0],
                     selection,
                     mask_buffer_id=(
-                        current_selection.mask_buffer_id
-                        if current_selection is not None
-                        else None
+                        current_selection.mask_buffer_id if current_selection is not None else None
                     ),
                 )
                 self.statusBar().showMessage("Copied selection")
@@ -1869,9 +1915,7 @@ class MainWindow(QMainWindow):
                 selection,
                 cut=True,
                 mask_buffer_id=(
-                    current_selection.mask_buffer_id
-                    if current_selection is not None
-                    else None
+                    current_selection.mask_buffer_id if current_selection is not None else None
                 ),
             )
             # Ctrl+X follows clipboard semantics: remove the selected pixels
@@ -1915,9 +1959,7 @@ class MainWindow(QMainWindow):
                 selected[0],
                 rect,
                 cut=True,
-                mask_buffer_id=(
-                    selection.mask_buffer_id if selection is not None else None
-                ),
+                mask_buffer_id=(selection.mask_buffer_id if selection is not None else None),
             )
             document = self._controller.paste_layers()
             pasted_ids = tuple(layer.id for layer in document.layers[-1:])
@@ -1983,8 +2025,10 @@ class MainWindow(QMainWindow):
                 document = self._controller.group_layers(layer_ids)
                 label = "Grouped selected layers"
                 selected_ids = (
-                    self._controller.active_layer_id,
-                ) if self._controller.active_layer_id is not None else ()
+                    (self._controller.active_layer_id,)
+                    if self._controller.active_layer_id is not None
+                    else ()
+                )
             elif action == "ungroup":
                 if not layer_ids:
                     return
@@ -2006,7 +2050,9 @@ class MainWindow(QMainWindow):
                 if layer_ids:
                     doc = self._controller.document
                     if doc is not None:
-                        target = next((l for l in doc.layers if l.id == layer_ids[0]), None)
+                        target = next(
+                            (layer for layer in doc.layers if layer.id == layer_ids[0]), None
+                        )
                         if target is not None:
                             self._change_layer(layer_ids, None, None, None, not target.locked)
                 return
@@ -2127,9 +2173,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QRect
 
         self._canvas.set_selection_rect(QRect(0, 0, self._canvas.width(), self._canvas.height()))
-        self.statusBar().showMessage(
-            f"Selected all ({doc.image.width}×{doc.image.height})", 2000
-        )
+        self.statusBar().showMessage(f"Selected all ({doc.image.width}×{doc.image.height})", 2000)
 
     def _selected_layer_ids(self) -> tuple[object, ...]:
         return self._selected_layer_ids_state or self._sidebar.selected_layer_ids()
@@ -2253,9 +2297,7 @@ class MainWindow(QMainWindow):
                     tool.id,
                     values,
                     self._processing_worker.submit,
-                    on_done=lambda document: self._on_async_processing_done(
-                        document, tool.name
-                    ),
+                    on_done=lambda document: self._on_async_processing_done(document, tool.name),
                     on_error=lambda error: self._on_async_processing_error(error),
                     on_stale=lambda: self._on_async_processing_stale(tool.name),
                     on_progress=lambda percent: self.statusBar().showMessage(
@@ -2438,7 +2480,10 @@ class MainWindow(QMainWindow):
     def _open_image(self) -> None:
         """Open an image as a new session without closing the active one."""
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open image", "", "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp *.ppm);;All files (*)"
+            self,
+            "Open image",
+            "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.webp *.ppm);;All files (*)",
         )
         if not filename:
             return
@@ -2480,7 +2525,7 @@ class MainWindow(QMainWindow):
         self._sidebar.show_layers(document.layers, selected_ids)
         self._on_layer_selection_changed(tuple(selected_ids))
 
-        if hasattr(self._sidebar, 'set_history_states'):
+        if hasattr(self._sidebar, "set_history_states"):
             labels = self._controller.history_labels()
             current_idx = self._controller.history_current_index()
             self._sidebar.set_history_states(labels, current_idx)
@@ -2490,6 +2535,7 @@ class MainWindow(QMainWindow):
         renderer = getattr(self._controller, "_renderer", None)
         if renderer is not None and hasattr(renderer, "render_raw"):
             from dip_studio.rendering.ports import RenderRequest
+
             try:
                 raw_arr = renderer.render_raw(
                     RenderRequest(str(document.id), document.image.width, document.image.height)
@@ -2518,7 +2564,9 @@ class MainWindow(QMainWindow):
         if hasattr(self._sidebar, "update_navigator"):
             # Navigator uses the byte preview; compute lazily only when needed.
             try:
-                preview_bytes = self._controller.preview(document.image.width, document.image.height)
+                preview_bytes = self._controller.preview(
+                    document.image.width, document.image.height
+                )
                 self._sidebar.update_navigator(preview_bytes, self._canvas.zoom)
             except Exception as exc:
                 self.statusBar().showMessage(f"Navigator preview failed: {exc}", 3000)
@@ -2527,17 +2575,13 @@ class MainWindow(QMainWindow):
             f"{self._canvas.zoom:.0%}"
         )
         self._update_window_title(document)
-        self._document_bar.set_documents(
-            self._controller.open_documents, document.id
-        )
+        self._document_bar.set_documents(self._controller.open_documents, document.id)
 
     def _update_window_title(self, document: DocumentView) -> None:
         active = self._controller.document
         dirty_marker = "*" if active is not None and active.is_dirty else ""
         self.setWindowTitle(f"{dirty_marker}{document.name} — DIP Studio")
-        self._document_bar.set_documents(
-            self._controller.open_documents, document.id
-        )
+        self._document_bar.set_documents(self._controller.open_documents, document.id)
 
     def _confirm_document_transition(self) -> bool:
         document = self._controller.document
@@ -2583,46 +2627,53 @@ class MainWindow(QMainWindow):
         for command_id, handler in palette_handlers.items():
             self._register_ui_command(command_id, handler)
         commands = (
-            ("New project", lambda: self._dispatch_ui_command("file.new")),
-            ("Open project", lambda: self._dispatch_ui_command("file.open_project")),
-            ("Open image", lambda: self._dispatch_ui_command("file.open_image")),
-            ("Save project", lambda: self._dispatch_ui_command("file.save")),
-            ("Keyboard shortcuts", self._show_shortcut_editor),
-            ("Undo", lambda: self._dispatch_ui_command("edit.undo")),
-            ("Redo", lambda: self._dispatch_ui_command("edit.redo")),
-            ("Add layer", lambda: self._dispatch_ui_command("layer.add")),
-            ("Duplicate selected layer", lambda: self._dispatch_ui_command("layer.duplicate")),
-            ("Remove selected layers", lambda: self._dispatch_ui_command("layer.remove")),
-            ("Move selected layer up", lambda: self._dispatch_ui_command("layer.move_up")),
-            ("Move selected layer down", lambda: self._dispatch_ui_command("layer.move_down")),
-            ("Toggle selected layer visibility", lambda: self._dispatch_ui_command("layer.toggle_visibility")),
-            ("Rename selected layer", lambda: self._dispatch_ui_command("layer.rename")),
-            ("Copy selected layers", lambda: self._dispatch_ui_command("layer.copy")),
-            ("Paste layers", lambda: self._dispatch_ui_command("layer.paste")),
-            ("Toggle theme", lambda: self._dispatch_ui_command("view.theme")),
-            ("Zoom in", lambda: self._dispatch_ui_command("canvas.zoom_in")),
-            ("Zoom out", lambda: self._dispatch_ui_command("canvas.zoom_out")),
-            ("Fit canvas", lambda: self._dispatch_ui_command("canvas.fit")),
-            ("Actual size", lambda: self._dispatch_ui_command("canvas.actual_size")),
-            ("Toggle grid", lambda: self._dispatch_ui_command("canvas.grid")),
-            ("Toggle before/after", lambda: self._dispatch_ui_command("canvas.before_after")),
-        ) + tuple(
             (
-                f"Tool: {tool.name}",
-                lambda tool_id=tool.id: self._dispatch_ui_command(f"tool.{tool_id}"),
-            )
-            for tool in self._controller.tools
-        ) + tuple(
-            (
-                f"Process: {tool.name}",
-                self._processing_action(
-                    tool.id,
-                    {},
-                    dialog=bool(tool.parameters),
+                ("New project", lambda: self._dispatch_ui_command("file.new")),
+                ("Open project", lambda: self._dispatch_ui_command("file.open_project")),
+                ("Open image", lambda: self._dispatch_ui_command("file.open_image")),
+                ("Save project", lambda: self._dispatch_ui_command("file.save")),
+                ("Keyboard shortcuts", self._show_shortcut_editor),
+                ("Undo", lambda: self._dispatch_ui_command("edit.undo")),
+                ("Redo", lambda: self._dispatch_ui_command("edit.redo")),
+                ("Add layer", lambda: self._dispatch_ui_command("layer.add")),
+                ("Duplicate selected layer", lambda: self._dispatch_ui_command("layer.duplicate")),
+                ("Remove selected layers", lambda: self._dispatch_ui_command("layer.remove")),
+                ("Move selected layer up", lambda: self._dispatch_ui_command("layer.move_up")),
+                ("Move selected layer down", lambda: self._dispatch_ui_command("layer.move_down")),
+                (
+                    "Toggle selected layer visibility",
+                    lambda: self._dispatch_ui_command("layer.toggle_visibility"),
                 ),
+                ("Rename selected layer", lambda: self._dispatch_ui_command("layer.rename")),
+                ("Copy selected layers", lambda: self._dispatch_ui_command("layer.copy")),
+                ("Paste layers", lambda: self._dispatch_ui_command("layer.paste")),
+                ("Toggle theme", lambda: self._dispatch_ui_command("view.theme")),
+                ("Zoom in", lambda: self._dispatch_ui_command("canvas.zoom_in")),
+                ("Zoom out", lambda: self._dispatch_ui_command("canvas.zoom_out")),
+                ("Fit canvas", lambda: self._dispatch_ui_command("canvas.fit")),
+                ("Actual size", lambda: self._dispatch_ui_command("canvas.actual_size")),
+                ("Toggle grid", lambda: self._dispatch_ui_command("canvas.grid")),
+                ("Toggle before/after", lambda: self._dispatch_ui_command("canvas.before_after")),
             )
-            for tool in self._controller.tools
-            if tool.category in {"Filter", "Analysis"} and tool.id
+            + tuple(
+                (
+                    f"Tool: {tool.name}",
+                    lambda tool_id=tool.id: self._dispatch_ui_command(f"tool.{tool_id}"),
+                )
+                for tool in self._controller.tools
+            )
+            + tuple(
+                (
+                    f"Process: {tool.name}",
+                    self._processing_action(
+                        tool.id,
+                        {},
+                        dialog=bool(tool.parameters),
+                    ),
+                )
+                for tool in self._controller.tools
+                if tool.category in {"Filter", "Analysis"} and tool.id
+            )
         )
         CommandPaletteDialog(commands, self).exec()
 
@@ -2975,7 +3026,7 @@ class MainWindow(QMainWindow):
             return
         try:
             doc = self._controller.apply_processing(operation, params)
-            self._show_document(doc, operation.replace('_', ' ').title(), ())
+            self._show_document(doc, operation.replace("_", " ").title(), ())
             self._refresh_preview()
         except KeyError:
             self.statusBar().showMessage(f"Operation '{operation}' not available", 3000)
@@ -3004,7 +3055,7 @@ class MainWindow(QMainWindow):
                 self._canvas.zoom,
             )
             self._canvas.show_preview(preview)
-            if hasattr(self._sidebar, 'update_navigator'):
+            if hasattr(self._sidebar, "update_navigator"):
                 self._sidebar.update_navigator(preview, self._canvas.zoom)
         except Exception as exc:
             self.statusBar().showMessage(f"Preview render failed: {exc}", 3000)
@@ -3062,13 +3113,14 @@ class MainWindow(QMainWindow):
         fmt = dlg.selected_format()
         quality = dlg.selected_quality()
         ext_map = {
-            "png": "*.png", "jpeg": "*.jpg *.jpeg", "bmp": "*.bmp",
-            "tiff": "*.tiff *.tif", "ppm": "*.ppm",
+            "png": "*.png",
+            "jpeg": "*.jpg *.jpeg",
+            "bmp": "*.bmp",
+            "tiff": "*.tiff *.tif",
+            "ppm": "*.ppm",
         }
         filter_str = f"{fmt.upper()} Files ({ext_map.get(fmt, '*.' + fmt)})"
-        path_str, _ = QFileDialog.getSaveFileName(
-            self, "Export Image", "", filter_str
-        )
+        path_str, _ = QFileDialog.getSaveFileName(self, "Export Image", "", filter_str)
         if not path_str:
             return
         path = Path(path_str)
@@ -3096,9 +3148,7 @@ class MainWindow(QMainWindow):
         try:
             doc = self._controller.place_image(Path(path_str))
             self._show_document(doc, f"Place {Path(path_str).stem}", ())
-            self.statusBar().showMessage(
-                f"Placed '{Path(path_str).name}' as new layer", 2000
-            )
+            self.statusBar().showMessage(f"Placed '{Path(path_str).name}' as new layer", 2000)
         except Exception as exc:
             QMessageBox.critical(self, "Place Error", str(exc))
 
@@ -3106,6 +3156,7 @@ class MainWindow(QMainWindow):
         """Open the interactive User Documentation Viewer dialog (F1)."""
         try:
             from dip_studio.presentation.doc_viewer import DocViewerDialog
+
             dlg = DocViewerDialog(parent=self)
             dlg.exec()
         except Exception as exc:
@@ -3113,11 +3164,13 @@ class MainWindow(QMainWindow):
 
     def _show_about(self) -> None:
         from PySide6.QtWidgets import QMessageBox
+
         QMessageBox.about(
             self,
             "About DIP Studio",
             "<b>DIP Studio</b><br/>"
             "Professional Digital Image Processing &amp; Computer Vision Studio<br/><br/>"
-            "Architecture: Clean layers — Domain / Application / Infrastructure / Processing / Rendering / Presentation<br/>"
-            "Version: 0.1.0"
+            "Architecture: Clean layers — Domain / Application / Infrastructure / Processing / "
+            "Rendering / Presentation<br/>"
+            "Version: 0.1.0",
         )

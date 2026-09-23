@@ -3,7 +3,14 @@ from __future__ import annotations
 import numpy as np
 
 from dip_studio.application.processing_graph import OperationNode, ProcessingGraph
-from dip_studio.domain.model import AdjustmentLayer, FilterLayer, ImageDocument, ImageSpec, Layer, LayerId
+from dip_studio.domain.model import (
+    AdjustmentLayer,
+    FilterLayer,
+    ImageDocument,
+    ImageSpec,
+    Layer,
+    LayerId,
+)
 from dip_studio.processing.contracts import ProcessingRequest
 from dip_studio.processing.engine import ProcessingEngine
 from dip_studio.rendering.compositor import NumpyDocumentRenderer
@@ -21,12 +28,11 @@ class _AppendProcessor:
 
 
 def test_processing_graph_evaluates_enabled_nodes_in_order() -> None:
-    graph = ProcessingGraph().add(
-        OperationNode("first", ProcessingRequest("append", (("suffix", "-a"),)))
-    ).add(
-        OperationNode("disabled", ProcessingRequest("append", (("suffix", "-x"),)), False)
-    ).add(
-        OperationNode("second", ProcessingRequest("append", (("suffix", "-b"),)))
+    graph = (
+        ProcessingGraph()
+        .add(OperationNode("first", ProcessingRequest("append", (("suffix", "-a"),))))
+        .add(OperationNode("disabled", ProcessingRequest("append", (("suffix", "-x"),)), False))
+        .add(OperationNode("second", ProcessingRequest("append", (("suffix", "-b"),))))
     )
     progress: list[tuple[int, int, str]] = []
 
@@ -36,9 +42,11 @@ def test_processing_graph_evaluates_enabled_nodes_in_order() -> None:
         progress=type(
             "Reporter",
             (),
-            {"report": lambda _, completed, total, message="": progress.append(
-                (completed, total, message)
-            )},
+            {
+                "report": lambda _, completed, total, message="": progress.append(
+                    (completed, total, message)
+                )
+            },
         )(),
     )
 
@@ -129,7 +137,11 @@ def test_adjustment_layer_is_applied_to_lower_stack() -> None:
             name="doc",
             image=ImageSpec(width=2, height=2),
             layers=(
-                Layer(id=LayerId("00000000-0000-0000-0000-000000000001"), name="base", buffer_id="base"),
+                Layer(
+                    id=LayerId("00000000-0000-0000-0000-000000000001"),
+                    name="base",
+                    buffer_id="base",
+                ),
                 AdjustmentLayer(
                     id=LayerId("00000000-0000-0000-0000-000000000002"),
                     name="brightness",
@@ -137,7 +149,9 @@ def test_adjustment_layer_is_applied_to_lower_stack() -> None:
                     adjustment_type="brightness_contrast",
                     adjustment_params=(("alpha", "1.0"), ("beta", "50.0")),
                 ),
-                Layer(id=LayerId("00000000-0000-0000-0000-000000000003"), name="top", buffer_id="top"),
+                Layer(
+                    id=LayerId("00000000-0000-0000-0000-000000000003"), name="top", buffer_id="top"
+                ),
             ),
         )
         data_store = type(
@@ -145,19 +159,25 @@ def test_adjustment_layer_is_applied_to_lower_stack() -> None:
             (),
             {
                 "get": lambda self, key: {
-                            "base": np.stack([
-                                np.full((2, 2), 20, dtype=np.uint8),
-                                np.full((2, 2), 20, dtype=np.uint8),
-                                np.full((2, 2), 20, dtype=np.uint8),
-                                np.full((2, 2), 255, dtype=np.uint8),
-                            ], axis=-1),
-                            "top": np.stack([
-                                np.full((2, 2), 240, dtype=np.uint8),
-                                np.full((2, 2), 240, dtype=np.uint8),
-                                np.full((2, 2), 240, dtype=np.uint8),
-                                np.full((2, 2), 0, dtype=np.uint8),
-                            ], axis=-1),
-                        }[key],
+                    "base": np.stack(
+                        [
+                            np.full((2, 2), 20, dtype=np.uint8),
+                            np.full((2, 2), 20, dtype=np.uint8),
+                            np.full((2, 2), 20, dtype=np.uint8),
+                            np.full((2, 2), 255, dtype=np.uint8),
+                        ],
+                        axis=-1,
+                    ),
+                    "top": np.stack(
+                        [
+                            np.full((2, 2), 240, dtype=np.uint8),
+                            np.full((2, 2), 240, dtype=np.uint8),
+                            np.full((2, 2), 240, dtype=np.uint8),
+                            np.full((2, 2), 0, dtype=np.uint8),
+                        ],
+                        axis=-1,
+                    ),
+                }[key],
             },
         )()
 
@@ -178,24 +198,37 @@ def test_filter_layer_uses_filter_operation_in_stack() -> None:
             name="doc",
             image=ImageSpec(width=2, height=2),
             layers=(
-                        Layer(id=LayerId("00000000-0000-0000-0000-000000000011"), name="base", buffer_id="base"),
-                        FilterLayer(
-                            id=LayerId("00000000-0000-0000-0000-000000000012"),
-                            name="filter",
-                            filter_type="grayscale",
-                            filter_params=(),
-                        ),
+                Layer(
+                    id=LayerId("00000000-0000-0000-0000-000000000011"),
+                    name="base",
+                    buffer_id="base",
+                ),
+                FilterLayer(
+                    id=LayerId("00000000-0000-0000-0000-000000000012"),
+                    name="filter",
+                    filter_type="grayscale",
+                    filter_params=(),
+                ),
             ),
         )
         data_store = type(
             "Store",
             (),
-            {"get": lambda self, key: np.stack([
-                        np.full((2, 2), 100, dtype=np.uint8),
-                        np.full((2, 2), 100, dtype=np.uint8),
-                        np.full((2, 2), 100, dtype=np.uint8),
-                        np.full((2, 2), 255, dtype=np.uint8),
-            ], axis=-1) if key == "base" else None},
+            {
+                "get": lambda self, key: (
+                    np.stack(
+                        [
+                            np.full((2, 2), 100, dtype=np.uint8),
+                            np.full((2, 2), 100, dtype=np.uint8),
+                            np.full((2, 2), 100, dtype=np.uint8),
+                            np.full((2, 2), 255, dtype=np.uint8),
+                        ],
+                        axis=-1,
+                    )
+                    if key == "base"
+                    else None
+                )
+            },
         )()
 
     controller = _DummyController()

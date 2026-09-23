@@ -1,4 +1,5 @@
 """Deterministic object tracking over CV object collections."""
+
 from __future__ import annotations
 
 from dip_studio.domain.cv_model import (

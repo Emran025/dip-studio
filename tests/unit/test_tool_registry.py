@@ -18,17 +18,68 @@ def test_default_tool_registry_discovers_tools_and_parameters() -> None:
     blur = registry.get("blur")
 
     assert [tool.name for tool in tools] == [
-        "Select", "Selection", "Ellipse selection", "Lasso",
-        "Polygon selection", "Color selection", "Crop", "Move", "Transform",
-        "Rotate", "Blur", "Edge", "Gradient", "Brush", "Pencil", "Eraser",
-        "Fill", "Clone stamp", "Hand", "Zoom", "Eyedropper", "Text",
-        "Rectangle", "Ellipse", "Line", "Polygon",
-        "Histogram", "Threshold", "Morphology", "Segmentation",
+        "Select",
+        "Selection",
+        "Ellipse selection",
+        "Lasso",
+        "Polygon selection",
+        "Color selection",
+        "Crop",
+        "Move",
+        "Transform",
+        "Rotate",
+        "Blur",
+        "Edge",
+        "Gradient",
+        "Brush",
+        "Pencil",
+        "Eraser",
+        "Fill",
+        "Clone stamp",
+        "Hand",
+        "Zoom",
+        "Eyedropper",
+        "Text",
+        "Rectangle",
+        "Ellipse",
+        "Line",
+        "Polygon",
+        "Histogram",
+        "Threshold",
+        "Morphology",
+        "Segmentation",
     ]
     assert [tool.shortcut for tool in tools] == [
-        "V", "M", "O", "L", "P", None, "C", None, None, None, "B", "E",
-        "G", "Shift+B", None, "Shift+E", "F", None, "H", "Z", "I", "T",
-        "U", None, None, None, None, None, None, None,
+        "V",
+        "M",
+        "O",
+        "L",
+        "P",
+        None,
+        "C",
+        None,
+        None,
+        None,
+        "B",
+        "E",
+        "G",
+        "Shift+B",
+        None,
+        "Shift+E",
+        "F",
+        None,
+        "H",
+        "Z",
+        "I",
+        "T",
+        "U",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     ]
     assert blur.category == "Filter"
     assert [parameter.id for parameter in blur.parameters] == ["radius", "method"]
@@ -41,13 +92,20 @@ def test_tool_registry_rejects_unknown_tool() -> None:
 
 def test_tool_parameter_schema_supports_step_description_and_validation() -> None:
     parameter = ToolParameter(
-        "threshold", "Threshold", "number", 10, 0, 100, (),
-        step=0.5, description="Detection threshold",
+        "threshold",
+        "Threshold",
+        "number",
+        10,
+        0,
+        100,
+        (),
+        step=0.5,
+        description="Detection threshold",
         validation=lambda value: float(value) == 10,
     )
-    registry = InMemoryToolRegistry((
-        ToolDefinition("custom", "Custom", "Plugin", "Custom tool", parameters=(parameter,)),
-    ))
+    registry = InMemoryToolRegistry(
+        (ToolDefinition("custom", "Custom", "Plugin", "Custom tool", parameters=(parameter,)),)
+    )
 
     assert parameter.step == 0.5
     assert parameter.description == "Detection threshold"
@@ -59,17 +117,11 @@ def test_tool_parameter_schema_supports_step_description_and_validation() -> Non
 def test_shape_tool_is_in_a_dedicated_visible_drawing_group() -> None:
     groups = dict(ToolPanel._GROUPS)
 
-    assert groups["Drawing"] == (
-        "shape_rectangle", "shape_ellipse", "shape_line", "shape_polygon"
-    )
+    assert groups["Drawing"] == ("shape_rectangle", "shape_ellipse", "shape_line", "shape_polygon")
     assert all(not tool_id.startswith("shape") for tool_id in groups["Vector"])
     assert groups["Vector"] == ("text",)
 
-    grouped_tools = [
-        tool_id
-        for tool_ids in groups.values()
-        for tool_id in tool_ids
-    ]
+    grouped_tools = [tool_id for tool_ids in groups.values() for tool_id in tool_ids]
     assert len(grouped_tools) == len(set(grouped_tools))
 
 
@@ -97,7 +149,8 @@ def test_morphology_kernel_properties_are_centered_and_safe() -> None:
     }
     for tool_id in ("morphology", "erode", "dilate", "morph_open", "morph_close"):
         parameter = next(
-            parameter for parameter in definitions[tool_id].parameters
+            parameter
+            for parameter in definitions[tool_id].parameters
             if parameter.id == "kernel_size"
         )
         assert parameter.step == 2

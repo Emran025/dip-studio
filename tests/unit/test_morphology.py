@@ -1,4 +1,5 @@
 """Tests for morphological processors."""
+
 import numpy as np
 import pytest
 

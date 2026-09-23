@@ -4,9 +4,7 @@ from dip_studio.infrastructure.cv_export import trajectories_to_csv, trajectorie
 
 
 def _object(object_id: str, x: float, y: float) -> DetectedObject:
-    return DetectedObject(
-        object_id, "item", 1.0, BoundingBox(int(x), int(y), 10, 10), (x, y)
-    )
+    return DetectedObject(object_id, "item", 1.0, BoundingBox(int(x), int(y), 10, 10), (x, y))
 
 
 def test_tracking_is_deterministic_and_uses_centroid() -> None:

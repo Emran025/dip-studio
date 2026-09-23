@@ -10,20 +10,21 @@ Covers three groups:
 All processors extend :class:`~dip_studio.processing.processors._base.BaseProcessor`
 and operate on NumPy arrays only (no Qt / PySide6).
 """
+
 from __future__ import annotations
 
 import math
 
 import numpy as np
 
-from dip_studio.processing.contracts import ProcessingRequest
-from dip_studio.processing.processors._base import BaseProcessor, _ensure_3ch, _param, _to_gray
 from dip_studio.core.errors import OptionalBackendError
-
+from dip_studio.processing.contracts import ProcessingRequest
+from dip_studio.processing.processors._base import BaseProcessor, _ensure_3ch, _param
 
 # ---------------------------------------------------------------------------
 # Noise addition
 # ---------------------------------------------------------------------------
+
 
 class NoiseGaussianProcessor(BaseProcessor):
     """Add zero-mean Gaussian noise to all channels.
@@ -96,17 +97,18 @@ class NoiseUniformProcessor(BaseProcessor):
 # Denoising
 # ---------------------------------------------------------------------------
 
+
 def _box_filter(channel: np.ndarray, k: int) -> np.ndarray:
     """Pure-NumPy box filter using integral image (2-D only, float64)."""
     k = max(1, k)
     # Pad with edge values to handle borders.
     padded = np.pad(channel.astype(np.float64), k // 2, mode="edge")
     # Compute integral image for fast area sums.
-    integral = padded.cumsum(axis=0).cumsum(axis=1)
+    padded.cumsum(axis=0).cumsum(axis=1)
     h, w = channel.shape
     result = np.zeros_like(channel, dtype=np.float64)
-    for i in range(h):
-        for j in range(w):
+    for _i in range(h):
+        for _j in range(w):
             # This nested loop is slow for large images.
             pass
     # Efficient sliding-window sum via integral image.
@@ -116,14 +118,10 @@ def _box_filter(channel: np.ndarray, k: int) -> np.ndarray:
     # Area sums using four-corner lookup.
     y1, x1 = 0, 0
     y2, x2 = h, w
-    s = (
-        ii[y2 + 2 * r, x2 + 2 * r]
-        - ii[y1,        x2 + 2 * r]
-        - ii[y2 + 2 * r, x1       ]
-        + ii[y1,         x1       ]
-    )
+    ii[y2 + 2 * r, x2 + 2 * r] - ii[y1, x2 + 2 * r] - ii[y2 + 2 * r, x1] + ii[y1, x1]
     # Use conv-like sliding window via stride tricks.
     from numpy.lib.stride_tricks import sliding_window_view
+
     windows = sliding_window_view(p, window_shape=(k, k))
     result = windows.mean(axis=(-2, -1))
     return result.astype(np.float64)
@@ -145,24 +143,34 @@ class DenoiseMeanProcessor(BaseProcessor):
             k += 1  # ensure odd
         try:
             from scipy.ndimage import uniform_filter  # type: ignore[import-untyped]
+
             if arr.ndim == 2:
-                return np.clip(uniform_filter(arr.astype(np.float64), size=k), 0, 255).astype(np.uint8)
+                return np.clip(uniform_filter(arr.astype(np.float64), size=k), 0, 255).astype(
+                    np.uint8
+                )
             out = arr.copy()
             for c in range(arr.shape[2]):
-                out[:, :, c] = np.clip(uniform_filter(arr[:, :, c].astype(np.float64), size=k), 0, 255).astype(np.uint8)
+                out[:, :, c] = np.clip(
+                    uniform_filter(arr[:, :, c].astype(np.float64), size=k), 0, 255
+                ).astype(np.uint8)
             return out
         except ImportError:
             pass
         # Pure NumPy fallback
         from numpy.lib.stride_tricks import sliding_window_view
+
         pad = k // 2
         if arr.ndim == 2:
             p = np.pad(arr.astype(np.float64), pad, mode="edge")
-            return np.clip(sliding_window_view(p, (k, k)).mean(axis=(-2, -1)), 0, 255).astype(np.uint8)
+            return np.clip(sliding_window_view(p, (k, k)).mean(axis=(-2, -1)), 0, 255).astype(
+                np.uint8
+            )
         out = arr.copy()
         for c in range(arr.shape[2]):
             p = np.pad(arr[:, :, c].astype(np.float64), pad, mode="edge")
-            out[:, :, c] = np.clip(sliding_window_view(p, (k, k)).mean(axis=(-2, -1)), 0, 255).astype(np.uint8)
+            out[:, :, c] = np.clip(
+                sliding_window_view(p, (k, k)).mean(axis=(-2, -1)), 0, 255
+            ).astype(np.uint8)
         return out
 
 
@@ -217,6 +225,7 @@ class DenoiseNLMProcessor(BaseProcessor):
         # Try OpenCV first.
         try:
             import cv2  # type: ignore[import-untyped]
+
             h_val = float(_param(request, "h", "10"))
             rgb = arr[:, :, :3] if arr.ndim == 3 and arr.shape[2] >= 3 else _ensure_3ch(arr)
             denoised = cv2.fastNlMeansDenoisingColored(rgb, None, h_val, h_val, 7, 21)
@@ -224,14 +233,13 @@ class DenoiseNLMProcessor(BaseProcessor):
                 return np.concatenate([denoised, arr[:, :, 3:4]], axis=-1)
             return denoised
         except ImportError as exc:
-            raise OptionalBackendError(
-                "denoise_nlm requires the optional OpenCV backend"
-            ) from exc
+            raise OptionalBackendError("denoise_nlm requires the optional OpenCV backend") from exc
 
 
 # ---------------------------------------------------------------------------
 # Quality metrics
 # ---------------------------------------------------------------------------
+
 
 class MetricPsnrProcessor(BaseProcessor):
     """Compute PSNR between the current layer and a reference buffer.
@@ -255,7 +263,7 @@ class MetricPsnrProcessor(BaseProcessor):
                 if ref.shape == cur.shape:
                     mse = float(np.mean((cur - ref) ** 2))
                     if mse > 0:
-                        psnr = 10.0 * math.log10(255.0 ** 2 / mse)
+                        psnr = 10.0 * math.log10(255.0**2 / mse)
                         print(f"[DIP Studio] PSNR = {psnr:.2f} dB")
                     else:
                         print("[DIP Studio] PSNR = ∞ dB (identical images)")
@@ -311,6 +319,6 @@ def _ssim(img1: np.ndarray, img2: np.ndarray) -> float:
         sigma2_sq = ch2.var()
         sigma12 = float(np.mean((ch1 - mu1) * (ch2 - mu2)))
         numerator = (2 * mu1 * mu2 + c1) * (2 * sigma12 + c2)
-        denominator = (mu1 ** 2 + mu2 ** 2 + c1) * (sigma1_sq + sigma2_sq + c2)
+        denominator = (mu1**2 + mu2**2 + c1) * (sigma1_sq + sigma2_sq + c2)
         ssims.append(numerator / (denominator + 1e-12))
     return float(np.mean(ssims))

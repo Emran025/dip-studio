@@ -1,11 +1,9 @@
 """Comprehensive tests for Photoshop-style crop, layer focus, and parameter handling."""
-from pathlib import Path
+
 import numpy as np
-import pytest
 
 from dip_studio.application.editor import EditorController
-from dip_studio.domain.factories import new_document
-from dip_studio.domain.model import ImageSpec, Layer, LayerId
+from dip_studio.domain.model import Layer
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.presentation.dialogs import ParameterDefinition, ToolParametersPanel
 from dip_studio.processing.contracts import ProcessingRequest
@@ -49,12 +47,10 @@ def test_controller_crop_document_full_flow() -> None:
     doc = controller.create_document("TestDoc", 300, 200)
 
     # Add a layer with actual buffer
-    layer = controller.add_layer("ContentLayer")
+    controller.add_layer("ContentLayer")
     target_layer_id = doc.layers[0].id
     controller._session.replace(
-        doc.changed(
-            layers=(Layer(id=target_layer_id, name="Base", buffer_id=buf_id),)
-        )
+        doc.changed(layers=(Layer(id=target_layer_id, name="Base", buffer_id=buf_id),))
     )
 
     cropped_doc = controller.crop_document(50, 40, 100, 80)
@@ -70,7 +66,7 @@ def test_controller_crop_document_full_flow() -> None:
 def test_tool_parameters_panel_set_values() -> None:
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     panel = ToolParametersPanel()
     schema = (
         ParameterDefinition("X", "integer", 0, 0, 10000),
@@ -90,13 +86,19 @@ def test_tool_parameters_panel_set_values() -> None:
 
 def test_crop_document_resets_layer_transform() -> None:
     from dip_studio.domain.model import Transform
+
     store = ImageDataStore()
     arr = np.ones((200, 300, 4), dtype=np.uint8) * 100
     buf_id = store.allocate(arr)
 
     controller = EditorController(BlankDocumentRenderer(), data_store=store)
     doc = controller.create_document("TransformTest", 300, 200)
-    layer = Layer(id=doc.layers[0].id, name="Transformed", buffer_id=buf_id, transform=Transform(tx=15.0, ty=15.0))
+    layer = Layer(
+        id=doc.layers[0].id,
+        name="Transformed",
+        buffer_id=buf_id,
+        transform=Transform(tx=15.0, ty=15.0),
+    )
     controller._session.replace(doc.changed(layers=(layer,)))
 
     cropped_doc = controller.crop_document(20, 20, 100, 100)
@@ -105,10 +107,11 @@ def test_crop_document_resets_layer_transform() -> None:
 
 def test_main_window_crop_enter_and_undo_view_fitting() -> None:
     from PySide6.QtWidgets import QApplication
+
     from dip_studio.presentation.main_window import MainWindow
     from dip_studio.rendering.compositor import NumpyDocumentRenderer
 
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     store = ImageDataStore()
     renderer = NumpyDocumentRenderer(None)
     controller = EditorController(renderer=renderer, data_store=store)
@@ -143,4 +146,3 @@ def test_main_window_crop_enter_and_undo_view_fitting() -> None:
     disp = window._canvas._image_display_rect()
     assert disp is not None
     assert disp.left() >= 0 and disp.top() >= 0
-

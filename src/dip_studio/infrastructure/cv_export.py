@@ -1,4 +1,5 @@
 """Versioned trajectory export."""
+
 from __future__ import annotations
 
 import csv
@@ -13,8 +14,11 @@ def trajectories_to_json(trajectories: Iterable[Trajectory], *, version: int) ->
     if version <= 0:
         raise ValueError("Export version must be positive")
     return json.dumps(
-        {"format": "dip-studio-trajectories", "version": version,
-         "trajectories": [trajectory.to_json_dict() for trajectory in trajectories]},
+        {
+            "format": "dip-studio-trajectories",
+            "version": version,
+            "trajectories": [trajectory.to_json_dict() for trajectory in trajectories],
+        },
         ensure_ascii=False,
         sort_keys=True,
     )

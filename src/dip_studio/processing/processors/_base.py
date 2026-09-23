@@ -1,4 +1,5 @@
 """Shared utilities for processor implementations."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -24,8 +25,8 @@ def _to_gray(arr: np.ndarray) -> np.ndarray:
         return arr
     if arr.shape[2] >= 3:
         # Luminosity formula
-        return (0.299 * arr[:,:,0] + 0.587 * arr[:,:,1] + 0.114 * arr[:,:,2]).astype(np.uint8)
-    return arr[:,:,0]
+        return (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]).astype(np.uint8)
+    return arr[:, :, 0]
 
 
 def _ensure_3ch(arr: np.ndarray) -> np.ndarray:
@@ -33,25 +34,25 @@ def _ensure_3ch(arr: np.ndarray) -> np.ndarray:
     if arr.ndim == 2:
         return np.stack([arr, arr, arr], axis=-1)
     if arr.shape[2] == 4:
-        return arr[:,:,:3]
+        return arr[:, :, :3]
     return arr
 
 
 class BaseProcessor:
     operation: str = ""
-    
+
     def __init__(self, data_store: ImageDataStore) -> None:
         self._store = data_store
-    
+
     def validate(self, request: ProcessingRequest) -> None:
         pass
-    
+
     def process(self, buffer_id: str, request: ProcessingRequest) -> str | object:
         arr = self._store.get(buffer_id)
         result = self._apply(arr, request)
         if isinstance(result, np.ndarray):
             return self._store.allocate(result)
         return result
-    
+
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
         raise NotImplementedError

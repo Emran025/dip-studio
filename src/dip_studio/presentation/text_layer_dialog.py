@@ -6,15 +6,17 @@ Used by the ``text`` tool handler in ``main_window.py``.
 Architecture: doc-06 — TextLayer is a first-class layer with editable
 text content.  This dialog provides the editing UI before rasterisation.
 """
+
 from __future__ import annotations
 
 import uuid
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -29,9 +31,10 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
-    QColorDialog,
 )
+
 from dip_studio.presentation.vector_icons import icon_for
+
 
 class TextLayerDialog(QDialog):
     """Modal dialog for composing / editing a TextLayer.
@@ -205,8 +208,9 @@ class TextLayerDialog(QDialog):
     def _pick_color(self) -> None:
         r, g, b, a = self._color_rgba
         initial = QColor(r, g, b, a)
-        col = QColorDialog.getColor(initial, self, "Text colour",
-                                    QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        col = QColorDialog.getColor(
+            initial, self, "Text colour", QColorDialog.ColorDialogOption.ShowAlphaChannel
+        )
         if col.isValid():
             self._color_rgba = (col.red(), col.green(), col.blue(), col.alpha())
             self._refresh_color_preview()
@@ -214,8 +218,9 @@ class TextLayerDialog(QDialog):
     def _pick_bg_color(self) -> None:
         r, g, b, a = self._bg_color_rgba
         initial = QColor(r, g, b, a)
-        col = QColorDialog.getColor(initial, self, "Background colour",
-                                    QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        col = QColorDialog.getColor(
+            initial, self, "Background colour", QColorDialog.ColorDialogOption.ShowAlphaChannel
+        )
         if col.isValid():
             self._bg_color_rgba = (col.red(), col.green(), col.blue(), col.alpha())
             self._refresh_bg_preview()
@@ -238,6 +243,7 @@ class TextLayerDialog(QDialog):
         layer_id = self._existing.id if self._existing is not None else uuid.uuid4()
         name = self._name_edit.text().strip() or "Text Layer"
         from dip_studio.application.presentation_bridge import make_text_layer
+
         layer = make_text_layer(
             id=layer_id,
             name=name,

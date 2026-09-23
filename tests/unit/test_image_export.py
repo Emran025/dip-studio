@@ -1,4 +1,5 @@
 """Tests for ImageExporter and CompositeExporter infrastructure adapters."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,8 +14,8 @@ from dip_studio.infrastructure.image_export import CompositeExporter, ImageExpor
 def rgb_image() -> np.ndarray:
     """3-channel (H, W, 3) RGB uint8 test image."""
     arr = np.zeros((8, 8, 3), dtype=np.uint8)
-    arr[:4, :, 0] = 200   # red top half
-    arr[4:, :, 1] = 180   # green bottom half
+    arr[:4, :, 0] = 200  # red top half
+    arr[4:, :, 1] = 180  # green bottom half
     return arr
 
 
@@ -50,9 +51,7 @@ class TestImageExporter:
         with pytest.raises(Exception, match="Unsupported"):
             ImageExporter().export(rgb_image, path)
 
-    def test_export_rgba_to_ppm_drops_alpha(
-        self, tmp_path: Path, rgba_image: np.ndarray
-    ) -> None:
+    def test_export_rgba_to_ppm_drops_alpha(self, tmp_path: Path, rgba_image: np.ndarray) -> None:
         path = tmp_path / "out.ppm"
         ImageExporter().export(rgba_image, path)
         assert path.exists()
@@ -64,6 +63,7 @@ class TestImageExporterWithPillow:
     @pytest.fixture(autouse=True)
     def _pillow_guard(self) -> None:
         import importlib.util
+
         if not importlib.util.find_spec("PIL"):
             pytest.skip("Pillow not installed")
 
@@ -97,6 +97,7 @@ class TestCompositeExporter:
     @pytest.fixture(autouse=True)
     def _pillow_guard(self) -> None:
         import importlib.util
+
         if not importlib.util.find_spec("PIL"):
             pytest.skip("Pillow not installed")
 
@@ -106,8 +107,10 @@ class TestCompositeExporter:
         return header + arr.tobytes()
 
     def _make_jpeg_bytes(self, w: int = 4, h: int = 4) -> bytes:
-        from PIL import Image as PilImage  # type: ignore[import-untyped]
         import io
+
+        from PIL import Image as PilImage  # type: ignore[import-untyped]
+
         arr = np.full((h, w, 3), 100, dtype=np.uint8)
         img = PilImage.fromarray(arr, "RGB")
         buf = io.BytesIO()

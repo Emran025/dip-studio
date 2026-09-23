@@ -1,4 +1,5 @@
 """Tests for Pillow-based image import and ImageFormatRegistry."""
+
 from __future__ import annotations
 
 import io
@@ -7,15 +8,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from dip_studio.core.errors import PersistenceError
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.infrastructure.image_import import ImageFormatRegistry, PillowImageImporter
-from dip_studio.core.errors import PersistenceError
 
 
 def _write_png(path: Path, width: int = 4, height: int = 4) -> None:
     """Write a minimal PNG file using Pillow."""
     try:
         from PIL import Image  # type: ignore[import-untyped]
+
         img = Image.new("RGB", (width, height), color=(255, 0, 0))
         img.save(path)
     except ImportError:

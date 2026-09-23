@@ -1,4 +1,5 @@
 """Bounded ndarray-backed tile cache for large-image workloads."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -92,7 +93,11 @@ class TileStore:
         if not isinstance(array, np.ndarray):
             raise TypeError("Tile values must be NumPy arrays")
 
-        if self.max_tiles is not None and len(self._tiles) >= self.max_tiles and normalized not in self._tiles:
+        if (
+            self.max_tiles is not None
+            and len(self._tiles) >= self.max_tiles
+            and normalized not in self._tiles
+        ):
             raise MemoryError(f"TileStore reached its configured tile limit ({self.max_tiles})")
 
         required = self._tile_size_bytes(array)
@@ -155,8 +160,7 @@ class TileStore:
             raise ValueError(f"Invalid tile bounds: x={x}, y={y}, width={width}, height={height}")
         if width > self.tile_size or height > self.tile_size:
             raise ValueError(
-                f"Tile bounds exceed tile_size={self.tile_size}: "
-                f"width={width}, height={height}"
+                f"Tile bounds exceed tile_size={self.tile_size}: width={width}, height={height}"
             )
 
     def __repr__(self) -> str:

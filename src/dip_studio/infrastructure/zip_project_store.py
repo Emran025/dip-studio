@@ -9,6 +9,7 @@ Format version 2: a ``.dip`` file is a ZIP archive containing:
 Legacy version-1 ``.dip`` files (plain JSON) are detected and loaded via the
 fallback ``JsonProjectStore`` so no data is ever lost on upgrade.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +19,7 @@ import os
 import re
 import zipfile
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -51,14 +52,18 @@ if TYPE_CHECKING:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _transform_to_dict(t: Transform | None) -> dict[str, float] | None:
     if t is None:
         return None
     return {
-        "tx": t.tx, "ty": t.ty,
-        "sx": t.sx, "sy": t.sy,
+        "tx": t.tx,
+        "ty": t.ty,
+        "sx": t.sx,
+        "sy": t.sy,
         "rotation": t.rotation,
-        "skew_x": t.skew_x, "skew_y": t.skew_y,
+        "skew_x": t.skew_x,
+        "skew_y": t.skew_y,
     }
 
 
@@ -90,42 +95,52 @@ def _layer_to_dict(layer: Layer) -> dict[str, Any]:
         "locked": layer.locked,
     }
     if isinstance(layer, TextLayer):
-        raw.update({
-            "text": layer.text,
-            "font_family": layer.font_family,
-            "font_size": layer.font_size,
-            "bold": layer.bold,
-            "italic": layer.italic,
-            "color_rgba": list(layer.color_rgba),
-            "alignment": layer.alignment,
-            "direction": layer.direction,
-            "letter_spacing": layer.letter_spacing,
-            "line_spacing": layer.line_spacing,
-            "background_color": list(layer.background_color),
-        })
+        raw.update(
+            {
+                "text": layer.text,
+                "font_family": layer.font_family,
+                "font_size": layer.font_size,
+                "bold": layer.bold,
+                "italic": layer.italic,
+                "color_rgba": list(layer.color_rgba),
+                "alignment": layer.alignment,
+                "direction": layer.direction,
+                "letter_spacing": layer.letter_spacing,
+                "line_spacing": layer.line_spacing,
+                "background_color": list(layer.background_color),
+            }
+        )
     elif isinstance(layer, ShapeLayer):
-        raw.update({
-            "shape_type": layer.shape_type,
-            "stroke_color": list(layer.stroke_color),
-            "fill_color": list(layer.fill_color),
-            "stroke_width": layer.stroke_width,
-            "vertices": list(layer.vertices),
-        })
+        raw.update(
+            {
+                "shape_type": layer.shape_type,
+                "stroke_color": list(layer.stroke_color),
+                "fill_color": list(layer.fill_color),
+                "stroke_width": layer.stroke_width,
+                "vertices": list(layer.vertices),
+            }
+        )
     elif isinstance(layer, AdjustmentLayer):
-        raw.update({
-            "adjustment_type": layer.adjustment_type,
-            "adjustment_params": list(layer.adjustment_params),
-        })
+        raw.update(
+            {
+                "adjustment_type": layer.adjustment_type,
+                "adjustment_params": list(layer.adjustment_params),
+            }
+        )
         if isinstance(layer, FilterLayer):
-            raw.update({
-                "filter_type": layer.filter_type,
-                "filter_params": list(layer.filter_params),
-            })
+            raw.update(
+                {
+                    "filter_type": layer.filter_type,
+                    "filter_params": list(layer.filter_params),
+                }
+            )
     elif isinstance(layer, GroupLayer):
-        raw.update({
-            "children": [str(child) for child in layer.children],
-            "pass_through": layer.pass_through,
-        })
+        raw.update(
+            {
+                "children": [str(child) for child in layer.children],
+                "pass_through": layer.pass_through,
+            }
+        )
     return raw
 
 
@@ -171,7 +186,7 @@ def _layer_from_dict(raw: dict[str, Any]) -> Layer:
         name=raw["name"],
         visible=bool(raw.get("visible", True)),
         opacity=float(raw.get("opacity", 1.0)),
-        buffer_id=raw.get("buffer_id"),      # may be None or old UUID string
+        buffer_id=raw.get("buffer_id"),  # may be None or old UUID string
         mask_id=raw.get("mask_id"),
         blend_mode=str(raw.get("blend_mode", "normal")),
         transform=_dict_to_transform(raw.get("transform")),
@@ -200,9 +215,7 @@ def _layer_from_dict(raw: dict[str, Any]) -> Layer:
         return ShapeLayer(
             **common,
             shape_type=str(raw.get("shape_type", "rectangle")),
-            stroke_color=_rgba(
-                raw.get("stroke_color", (0, 0, 0, 255)), "stroke_color"
-            ),
+            stroke_color=_rgba(raw.get("stroke_color", (0, 0, 0, 255)), "stroke_color"),
             fill_color=_rgba(raw.get("fill_color", (0, 0, 0, 0)), "fill_color"),
             stroke_width=float(raw.get("stroke_width", 1.0)),
             vertices=tuple(float(value) for value in raw.get("vertices", ())),
@@ -212,8 +225,7 @@ def _layer_from_dict(raw: dict[str, Any]) -> Layer:
             **common,
             adjustment_type=str(raw.get("adjustment_type", "")),
             adjustment_params=tuple(
-                (str(item[0]), str(item[1]))
-                for item in raw.get("adjustment_params", ())
+                (str(item[0]), str(item[1])) for item in raw.get("adjustment_params", ())
             ),
         )
     if layer_type == "FilterLayer":
@@ -221,13 +233,11 @@ def _layer_from_dict(raw: dict[str, Any]) -> Layer:
             **common,
             adjustment_type=str(raw.get("adjustment_type", "")),
             adjustment_params=tuple(
-                (str(item[0]), str(item[1]))
-                for item in raw.get("adjustment_params", ())
+                (str(item[0]), str(item[1])) for item in raw.get("adjustment_params", ())
             ),
             filter_type=str(raw.get("filter_type", "")),
             filter_params=tuple(
-                (str(item[0]), str(item[1]))
-                for item in raw.get("filter_params", ())
+                (str(item[0]), str(item[1])) for item in raw.get("filter_params", ())
             ),
         )
     if layer_type == "GroupLayer":
@@ -242,6 +252,7 @@ def _layer_from_dict(raw: dict[str, Any]) -> Layer:
 # ---------------------------------------------------------------------------
 # ZipProjectStore
 # ---------------------------------------------------------------------------
+
 
 class ZipProjectStore:
     """Saves and loads ``.dip`` projects as ZIP archives (format version 2).
@@ -304,7 +315,9 @@ class ZipProjectStore:
         try:
             zf.getinfo(archive_path)
         except KeyError as exc:
-            raise PersistenceError(f"Missing archive member '{archive_path}' for {context}") from exc
+            raise PersistenceError(
+                f"Missing archive member '{archive_path}' for {context}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Public API (matches ``ProjectStore`` Protocol)
@@ -315,9 +328,9 @@ class ZipProjectStore:
         tmp = path.with_suffix(path.suffix + ".tmp")
         try:
             buf = io.BytesIO()
-            payload = json.dumps(
-                self._to_payload(document), ensure_ascii=False, indent=2
-            ).encode("utf-8")
+            payload = json.dumps(self._to_payload(document), ensure_ascii=False, indent=2).encode(
+                "utf-8"
+            )
             with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
                 # 1. Metadata JSON
                 zf.writestr("metadata.json", payload)
@@ -326,7 +339,7 @@ class ZipProjectStore:
                     json.dumps(
                         {
                             "format_version": self.format_version,
-                            "created_at": datetime.now(timezone.utc).isoformat(),
+                            "created_at": datetime.now(UTC).isoformat(),
                             "sha256": self._manifest_checksum(payload),
                             "document_id": str(document.id),
                             "revision": document.revision,
@@ -342,8 +355,7 @@ class ZipProjectStore:
                     if layer.buffer_id is not None:
                         if not self._store.has(layer.buffer_id):
                             raise PersistenceError(
-                                f"Missing pixel buffer '{layer.buffer_id}' "
-                                f"for layer '{layer.name}'"
+                                f"Missing pixel buffer '{layer.buffer_id}' for layer '{layer.name}'"
                             )
                         if layer.buffer_id not in written_buffers:
                             arr = self._store.get(layer.buffer_id)
@@ -358,8 +370,7 @@ class ZipProjectStore:
                     if layer.mask_id is not None:
                         if not self._store.has(layer.mask_id):
                             raise PersistenceError(
-                                f"Missing mask buffer '{layer.mask_id}' "
-                                f"for layer '{layer.name}'"
+                                f"Missing mask buffer '{layer.mask_id}' for layer '{layer.name}'"
                             )
                         if layer.mask_id not in written_masks:
                             arr = self._store.get(layer.mask_id)
@@ -394,9 +405,7 @@ class ZipProjectStore:
                         continue
                     npy_buf = io.BytesIO()
                     np.save(npy_buf, self._store.get(selection.mask_buffer_id))
-                    zf.writestr(
-                        f"masks/{selection.mask_buffer_id}.npy", npy_buf.getvalue()
-                    )
+                    zf.writestr(f"masks/{selection.mask_buffer_id}.npy", npy_buf.getvalue())
                     written_masks.add(selection.mask_buffer_id)
             # Atomic write via temp file + rename.
             tmp.write_bytes(buf.getvalue())
@@ -472,19 +481,18 @@ class ZipProjectStore:
                         arr = np.load(io.BytesIO(zf.read(archive_path)), allow_pickle=False)
                         self._validate_mask_array(arr, old_mask_id, layer.name)
                         new_mask_id = self._store.allocate(arr)
-                    layers.append(replace(
-                        layer,
-                        buffer_id=new_buf_id,
-                        mask_id=new_mask_id,
-                    ))
+                    layers.append(
+                        replace(
+                            layer,
+                            buffer_id=new_buf_id,
+                            mask_id=new_mask_id,
+                        )
+                    )
                 # Operations
                 ops = tuple(
                     AppliedOperation(
                         str(op["operation"]),
-                        tuple(
-                            (str(p[0]), str(p[1]))
-                            for p in op.get("parameters", [])
-                        ),
+                        tuple((str(p[0]), str(p[1])) for p in op.get("parameters", [])),
                     )
                     for op in doc_raw.get("operations", [])
                 )
@@ -500,9 +508,7 @@ class ZipProjectStore:
                                 f"Missing mask buffer '{old_mask_id}' for mask "
                                 f"'{mask_raw.get('name', '')}'"
                             )
-                        arr = np.load(
-                            io.BytesIO(zf.read(archive_path)), allow_pickle=False
-                        )
+                        arr = np.load(io.BytesIO(zf.read(archive_path)), allow_pickle=False)
                         self._validate_mask_array(
                             arr, str(old_mask_id), str(mask_raw.get("name", ""))
                         )
@@ -528,12 +534,8 @@ class ZipProjectStore:
                             raise PersistenceError(
                                 f"Missing selection mask buffer '{old_selection_mask}'"
                             )
-                        arr = np.load(
-                            io.BytesIO(zf.read(archive_path)), allow_pickle=False
-                        )
-                        self._validate_mask_array(
-                            arr, str(old_selection_mask), "selection"
-                        )
+                        arr = np.load(io.BytesIO(zf.read(archive_path)), allow_pickle=False)
+                        self._validate_mask_array(arr, str(old_selection_mask), "selection")
                         mask_ids[str(old_selection_mask)] = self._store.allocate(arr)
                     selection_values.append(
                         SelectionRect(
@@ -564,7 +566,9 @@ class ZipProjectStore:
                     if self._store.has(resolved_key):
                         remapped_buffer_metadata.append((resolved_key, dict(raw_value)))
                     elif raw_key in buffer_id_map:
-                        remapped_buffer_metadata.append((buffer_id_map[str(raw_key)], dict(raw_value)))
+                        remapped_buffer_metadata.append(
+                            (buffer_id_map[str(raw_key)], dict(raw_value))
+                        )
                 return ImageDocument(
                     id=DocumentId(UUID(doc_raw["id"])),
                     name=str(doc_raw["name"]),
@@ -575,13 +579,9 @@ class ZipProjectStore:
                     operations=ops,
                     masks=tuple(remapped_masks),
                     selections=selections,
-                    metadata=tuple(
-                        (str(key), str(value))
-                        for key, value in metadata_raw.items()
-                    ),
+                    metadata=tuple((str(key), str(value)) for key, value in metadata_raw.items()),
                     workspace_metadata=tuple(
-                        (str(key), str(value))
-                        for key, value in workspace_raw.items()
+                        (str(key), str(value)) for key, value in workspace_raw.items()
                     ),
                     buffer_metadata=tuple(remapped_buffer_metadata),
                     cv_objects=tuple(cv_objects_raw),
@@ -606,12 +606,10 @@ class ZipProjectStore:
             )
         if array.ndim == 3 and not 1 <= array.shape[2] <= 4:
             raise PersistenceError(
-                f"Invalid pixel buffer '{buffer_id}' for layer '{layer_name}': invalid channel count"
+                f"Invalid pixel buffer '{buffer_id}' for layer '{layer_name}': invalid channel count"  # noqa: E501
             )
         if array.shape[0] > image_spec.height or array.shape[1] > image_spec.width:
-            raise PersistenceError(
-                f"Pixel buffer '{buffer_id}' exceeds document dimensions"
-            )
+            raise PersistenceError(f"Pixel buffer '{buffer_id}' exceeds document dimensions")
         if array.dtype.kind not in "uibf":
             raise PersistenceError(
                 f"Pixel buffer '{buffer_id}' has unsupported dtype {array.dtype}"
@@ -620,17 +618,11 @@ class ZipProjectStore:
     @staticmethod
     def _validate_mask_array(array: np.ndarray, buffer_id: str, layer_name: str) -> None:
         if array.ndim not in (2, 3) or array.size == 0:
-            raise PersistenceError(
-                f"Invalid mask buffer '{buffer_id}' for layer '{layer_name}'"
-            )
+            raise PersistenceError(f"Invalid mask buffer '{buffer_id}' for layer '{layer_name}'")
         if array.ndim == 3 and array.shape[2] not in (1, 4):
-            raise PersistenceError(
-                f"Invalid mask buffer '{buffer_id}' for layer '{layer_name}'"
-            )
+            raise PersistenceError(f"Invalid mask buffer '{buffer_id}' for layer '{layer_name}'")
         if array.dtype.kind not in "uibf":
-            raise PersistenceError(
-                f"Mask buffer '{buffer_id}' has unsupported dtype {array.dtype}"
-            )
+            raise PersistenceError(f"Mask buffer '{buffer_id}' has unsupported dtype {array.dtype}")
 
     # ------------------------------------------------------------------
     # Serialisation helpers
@@ -664,9 +656,7 @@ class ZipProjectStore:
                     for op in document.operations
                 ],
                 "masks": [_mask_to_dict(mask) for mask in document.masks],
-                "selections": [
-                    _selection_to_dict(selection) for selection in document.selections
-                ],
+                "selections": [_selection_to_dict(selection) for selection in document.selections],
                 "metadata": dict(document.metadata),
                 "workspace_metadata": dict(document.workspace_metadata or document.metadata),
                 "buffer_metadata": buffer_metadata,
@@ -678,6 +668,7 @@ class ZipProjectStore:
 # ---------------------------------------------------------------------------
 # Auto-detect loader
 # ---------------------------------------------------------------------------
+
 
 def load_project(path: Path, data_store: ImageDataStore) -> ImageDocument:
     """Load a ``.dip`` project, auto-detecting format version.
@@ -691,4 +682,5 @@ def load_project(path: Path, data_store: ImageDataStore) -> ImageDocument:
         return ZipProjectStore(data_store).load(path)
     # Fallback to legacy JSON store (version 1).
     from dip_studio.infrastructure.project_store import JsonProjectStore
+
     return JsonProjectStore().load(path)

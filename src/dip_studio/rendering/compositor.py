@@ -3,6 +3,7 @@
 Rendering is separated from processing: processors return data,
 this compositor turns layer data into a displayable image.
 """
+
 from __future__ import annotations
 
 import io
@@ -11,10 +12,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from dip_studio.rendering.layer_evaluation import _apply_adjustment_layer
-from dip_studio.domain.model import AdjustmentLayer, FilterLayer, ShapeLayer
-from dip_studio.rendering.ports import RenderRequest
 from dip_studio.core.errors import RenderingError
+from dip_studio.domain.model import AdjustmentLayer, FilterLayer, ShapeLayer
+from dip_studio.rendering.layer_evaluation import _apply_adjustment_layer
+from dip_studio.rendering.ports import RenderRequest
 
 if TYPE_CHECKING:
     from dip_studio.application.editor import EditorController
@@ -51,7 +52,7 @@ class NumpyDocumentRenderer:
         result = np.clip(composited, 0, 255).astype(np.uint8)
         return _encode_png(result)
 
-    def render_raw(self, request: RenderRequest) -> "np.ndarray | None":
+    def render_raw(self, request: RenderRequest) -> np.ndarray | None:
         """Return the composited RGBA uint8 array (H, W, 4) without encoding.
 
         Returns ``None`` when there is nothing to render (no document / no data).
@@ -92,8 +93,7 @@ class NumpyDocumentRenderer:
                 child = layers.get(child_id)
                 if child is None:
                     raise RenderingError(
-                        f"Layer group '{group.name}' references missing child "
-                        f"'{child_id}'"
+                        f"Layer group '{group.name}' references missing child '{child_id}'"
                     )
                 child_result = evaluate_layer(child, active)
                 if isinstance(child, (AdjustmentLayer, FilterLayer)):
@@ -136,8 +136,7 @@ class NumpyDocumentRenderer:
                 arr = data_store.get(layer.buffer_id)
             except KeyError as exc:
                 raise RenderingError(
-                    f"Layer '{layer.name}' references missing buffer "
-                    f"'{layer.buffer_id}'"
+                    f"Layer '{layer.name}' references missing buffer '{layer.buffer_id}'"
                 ) from exc
             arr_rgba = _to_rgba(arr)
             arr_rgba = _transform_layer(
@@ -151,8 +150,7 @@ class NumpyDocumentRenderer:
                     mask_arr = data_store.get(layer.mask_id)
                 except KeyError as exc:
                     raise RenderingError(
-                        f"Layer '{layer.name}' references missing mask "
-                        f"'{layer.mask_id}'"
+                        f"Layer '{layer.name}' references missing mask '{layer.mask_id}'"
                     ) from exc
                 arr_rgba = _apply_mask(
                     arr_rgba,
@@ -168,7 +166,12 @@ class NumpyDocumentRenderer:
             return arr_rgba
 
         composited: np.ndarray | None = None
-        top_level_ids = {child_id for layer in document.layers if hasattr(layer, "children") for child_id in layer.children}
+        top_level_ids = {
+            child_id
+            for layer in document.layers
+            if hasattr(layer, "children")
+            for child_id in layer.children
+        }
         for layer in document.layers:
             if layer.id in top_level_ids:
                 continue
@@ -190,9 +193,7 @@ def _render_shape_layer(layer: ShapeLayer, width: int, height: int) -> np.ndarra
     """Rasterize vector geometry only at render time."""
     import cv2
 
-    x, y, shape_width, shape_height = (
-        int(round(value)) for value in layer.vertices[:4]
-    )
+    x, y, shape_width, shape_height = (int(round(value)) for value in layer.vertices[:4])
     canvas = np.zeros((height, width, 4), dtype=np.uint8)
     stroke = tuple(int(value) for value in layer.stroke_color)
     fill = tuple(int(value) for value in layer.fill_color)
@@ -201,9 +202,7 @@ def _render_shape_layer(layer: ShapeLayer, width: int, height: int) -> np.ndarra
         if fill[3]:
             cv2.rectangle(canvas, (x, y), (x + shape_width, y + shape_height), fill, -1)
         if stroke[3]:
-            cv2.rectangle(
-                canvas, (x, y), (x + shape_width, y + shape_height), stroke, thickness
-            )
+            cv2.rectangle(canvas, (x, y), (x + shape_width, y + shape_height), stroke, thickness)
     elif layer.shape_type == "ellipse":
         center = (x + shape_width // 2, y + shape_height // 2)
         axes = (max(1, shape_width // 2), max(1, shape_height // 2))
@@ -260,11 +259,14 @@ def _apply_mask(
     if mask_2d.max() > 1.0:
         mask_2d /= 255.0
     if mask_2d.shape != (height, width):
-        mask_2d = _fit_array_to_document(
-            np.repeat(mask_2d[:, :, None], 4, axis=2).astype(np.uint8),
-            width,
-            height,
-        )[:, :, 0].astype(np.float32) / 255.0
+        mask_2d = (
+            _fit_array_to_document(
+                np.repeat(mask_2d[:, :, None], 4, axis=2).astype(np.uint8),
+                width,
+                height,
+            )[:, :, 0].astype(np.float32)
+            / 255.0
+        )
     if mode == "hide":
         mask_2d = 1.0 - mask_2d
     elif mode != "reveal":
@@ -340,10 +342,7 @@ def _transform_layer(
     source_x = np.rint(source[..., 0]).astype(np.int64)
     source_y = np.rint(source[..., 1]).astype(np.int64)
     valid = (
-        (source_x >= 0)
-        & (source_x < arr.shape[1])
-        & (source_y >= 0)
-        & (source_y < arr.shape[0])
+        (source_x >= 0) & (source_x < arr.shape[1]) & (source_y >= 0) & (source_y < arr.shape[0])
     )
     output = np.zeros((height, width, arr.shape[2]), dtype=np.uint8)
     output[valid] = arr[source_y[valid], source_x[valid]]
@@ -377,9 +376,7 @@ def _alpha_composite(
     return result
 
 
-def _apply_blend_mode(
-    base: np.ndarray, overlay: np.ndarray, mode: str
-) -> np.ndarray:
+def _apply_blend_mode(base: np.ndarray, overlay: np.ndarray, mode: str) -> np.ndarray:
     """Return blended RGB in [0,1]. Both inputs are float32 (H,W,3) in [0,1]."""
     if mode == "normal":
         return overlay
@@ -397,10 +394,15 @@ def _apply_blend_mode(
         return np.where(
             overlay <= 0.5,
             base - (1.0 - 2.0 * overlay) * base * (1.0 - base),
-            base + (2.0 * overlay - 1.0) * (
-                np.where(base <= 0.25,
-                         ((16.0 * base - 12.0) * base + 4.0) * base,
-                         np.sqrt(np.clip(base, 0, 1))) - base
+            base
+            + (2.0 * overlay - 1.0)
+            * (
+                np.where(
+                    base <= 0.25,
+                    ((16.0 * base - 12.0) * base + 4.0) * base,
+                    np.sqrt(np.clip(base, 0, 1)),
+                )
+                - base
             ),
         )
     elif mode == "hard_light":
@@ -418,13 +420,9 @@ def _apply_blend_mode(
     elif mode == "exclusion":
         return base + overlay - 2.0 * base * overlay
     elif mode == "color_dodge":
-        return np.where(
-            overlay >= 1.0, 1.0, np.clip(base / (1.0 - overlay + 1e-9), 0, 1)
-        )
+        return np.where(overlay >= 1.0, 1.0, np.clip(base / (1.0 - overlay + 1e-9), 0, 1))
     elif mode == "color_burn":
-        return np.where(
-            overlay <= 0.0, 0.0, np.clip(1.0 - (1.0 - base) / (overlay + 1e-9), 0, 1)
-        )
+        return np.where(overlay <= 0.0, 0.0, np.clip(1.0 - (1.0 - base) / (overlay + 1e-9), 0, 1))
     # Unknown mode → fall back to normal
     return overlay
 
@@ -433,6 +431,7 @@ def _encode_jpeg(arr: np.ndarray) -> bytes:
     """Encode ndarray to JPEG bytes. Falls back to PPM if Pillow is unavailable."""
     if _PILLOW_AVAILABLE:
         from PIL import Image as PilImage  # type: ignore[import-untyped]
+
         # Flatten transparency onto white before converting to JPEG. Simply
         # dropping alpha turns transparent pixels black in the post-edit
         # preview, even though the underlying crop data is intact.
@@ -440,9 +439,7 @@ def _encode_jpeg(arr: np.ndarray) -> bytes:
             rgba = arr.astype(np.float32)
             alpha = rgba[:, :, 3:4] / 255.0
             background = np.full_like(rgba[:, :, :3], 255.0)
-            rgb = np.round(
-                rgba[:, :, :3] * alpha + background * (1.0 - alpha)
-            ).astype(np.uint8)
+            rgb = np.round(rgba[:, :, :3] * alpha + background * (1.0 - alpha)).astype(np.uint8)
         else:
             rgb = arr
         img = PilImage.fromarray(rgb.astype(np.uint8), "RGB")
@@ -454,9 +451,7 @@ def _encode_jpeg(arr: np.ndarray) -> bytes:
         rgba = arr.astype(np.float32)
         alpha = rgba[:, :, 3:4] / 255.0
         background = np.full_like(rgba[:, :, :3], 255.0)
-        rgb = np.round(
-            rgba[:, :, :3] * alpha + background * (1.0 - alpha)
-        ).astype(np.uint8)
+        rgb = np.round(rgba[:, :, :3] * alpha + background * (1.0 - alpha)).astype(np.uint8)
     else:
         rgb = arr
     h, w = rgb.shape[:2]
@@ -484,9 +479,7 @@ def _encode_png(arr: np.ndarray) -> bytes:
         rgba = arr.astype(np.float32)
         alpha = rgba[:, :, 3:4] / 255.0
         background = np.full_like(rgba[:, :, :3], 255.0)
-        rgb = np.round(
-            rgba[:, :, :3] * alpha + background * (1.0 - alpha)
-        ).astype(np.uint8)
+        rgb = np.round(rgba[:, :, :3] * alpha + background * (1.0 - alpha)).astype(np.uint8)
     elif arr.ndim == 3:
         rgb = arr[:, :, :3]
     else:

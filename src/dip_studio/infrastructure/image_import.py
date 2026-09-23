@@ -1,4 +1,5 @@
 """Image import adapters: PPM (zero-dependency) and Pillow (full format support)."""
+
 from __future__ import annotations
 
 import io
@@ -32,7 +33,6 @@ except Exception:
     pass
 
 
-
 class PpmImageImporter:
     """Dependency-free PPM reader (P3/P6)."""
 
@@ -58,6 +58,7 @@ class PpmImageImporter:
             if self._store is not None and _PILLOW_AVAILABLE:
                 try:
                     from PIL import Image as PilImage  # type: ignore[import-untyped]
+
                     img = PilImage.open(path).convert("RGB")
                     arr = np.array(img, dtype=np.uint8)
                     buffer_id = self._store.allocate(arr)
@@ -83,11 +84,11 @@ class PillowImageImporter:
 
     def import_image(self, path: Path) -> ImportedImage:
         if not _PILLOW_AVAILABLE:
-            raise PersistenceError(
-                "Pillow is not installed. Install it with: pip install Pillow"
-            )
+            raise PersistenceError("Pillow is not installed. Install it with: pip install Pillow")
         try:
-            from PIL import Image as PilImage, ImageOps  # type: ignore[import-untyped]
+            from PIL import Image as PilImage  # type: ignore[import-untyped]
+            from PIL import ImageOps
+
             img = PilImage.open(path)
             img = ImageOps.exif_transpose(img)
             # Convert to RGBA for uniform 4-channel handling
@@ -136,9 +137,7 @@ class ImageFormatRegistry:
         if importers is None:
             importers = _default_importers(self._data_store)
         self._importers = {
-            ext.lower(): importer
-            for importer in importers
-            for ext in importer.extensions
+            ext.lower(): importer for importer in importers for ext in importer.extensions
         }
         self.set_data_store(self._data_store)
 
@@ -155,9 +154,7 @@ class ImageFormatRegistry:
     def importer_for(self, path: Path) -> ImageImporter:
         importer = self._importers.get(path.suffix.lower())
         if importer is None:
-            raise PersistenceError(
-                f"No image importer registered for: {path.suffix or path.name}"
-            )
+            raise PersistenceError(f"No image importer registered for: {path.suffix or path.name}")
         return importer
 
     def import_image(self, path: Path) -> ImportedImage:

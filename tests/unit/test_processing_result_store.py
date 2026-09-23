@@ -2,7 +2,13 @@ import pytest
 
 from dip_studio.application.result_store import ProcessingResultStore
 from dip_studio.core.errors import ValidationError
-from dip_studio.domain.cv_model import BoundingBox, DetectedObject, ObjectCollection, Trajectory, TrajectoryPoint
+from dip_studio.domain.cv_model import (
+    BoundingBox,
+    DetectedObject,
+    ObjectCollection,
+    Trajectory,
+    TrajectoryPoint,
+)
 from dip_studio.processing.contracts import FeatureResult, ObjectCollectionResult, TrajectoryResult
 
 
@@ -36,7 +42,7 @@ def test_cv_result_types_validate_and_match_document_store() -> None:
         bbox=BoundingBox(2, 4, 10, 12),
         centroid=(7.0, 10.0),
     )
-    collection = ObjectCollection(0, 0.0, (obj,), 100, 100)
+    ObjectCollection(0, 0.0, (obj,), 100, 100)
     trajectory = Trajectory("obj-1", "cat", (TrajectoryPoint(0, 0.0, 7.0, 10.0, "obj-1"),))
 
     store = ProcessingResultStore()

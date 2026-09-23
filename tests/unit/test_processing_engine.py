@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 
+import numpy as np
 import pytest
 
 from dip_studio.core.cancellation import MutableCancellationToken
 from dip_studio.core.errors import CancellationError
-from dip_studio.processing.contracts import ProcessingContext, ProcessingRequest
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.infrastructure.processing_cache import ProcessingCache
-import numpy as np
+from dip_studio.processing.contracts import ProcessingContext, ProcessingRequest
 from dip_studio.processing.engine import ProcessingEngine
 
 
@@ -49,9 +49,7 @@ def test_processing_engine_rejects_malformed_request_shape(
     processing_request: ProcessingRequest, message: str
 ) -> None:
     with pytest.raises(ValueError, match=message):
-        ProcessingEngine({"uppercase": UppercaseProcessor()}).run(
-            "dip", processing_request
-        )
+        ProcessingEngine({"uppercase": UppercaseProcessor()}).run("dip", processing_request)
 
 
 @dataclass
@@ -303,9 +301,7 @@ def test_cache_invalidates_entries_referencing_mask_or_selection() -> None:
     from dip_studio.infrastructure.processing_cache import CacheKey
 
     cache = ProcessingCache()
-    mask_key = CacheKey.build(
-        "source", 0, "op", (), mask_id="mask", mask_version=0
-    )
+    mask_key = CacheKey.build("source", 0, "op", (), mask_id="mask", mask_version=0)
     selection_key = CacheKey.build(
         "source", 0, "op", (), selection_id="selection", selection_version=0
     )

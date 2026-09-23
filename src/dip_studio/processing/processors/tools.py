@@ -1,4 +1,5 @@
 """Bridge processors mapping tool definitions (blur, edge, morphology) to specific algorithms."""
+
 from __future__ import annotations
 
 import numpy as np

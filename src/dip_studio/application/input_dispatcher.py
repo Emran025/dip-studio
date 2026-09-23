@@ -61,8 +61,6 @@ class InputDispatcher:
         try:
             handler = self._handlers[binding.command_id]
         except KeyError as error:
-            raise KeyError(
-                f"No input handler registered for {binding.command_id}"
-            ) from error
+            raise KeyError(f"No input handler registered for {binding.command_id}") from error
         handler()
         return binding

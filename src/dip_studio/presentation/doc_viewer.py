@@ -6,17 +6,17 @@ Features:
 - Relative image rendering and rich HTML typography.
 - Search filter and Prev/Next page navigation.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Protocol, cast
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QFont, QIcon, QKeySequence
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -83,15 +83,23 @@ class DocSidebarWidget(QWidget):
         matching: list[DocPage] = []
 
         for page in self._pages:
-            if not query or query in page.metadata.title.lower() or query in page.markdown_text.lower():
+            if (
+                not query
+                or query in page.metadata.title.lower()
+                or query in page.markdown_text.lower()
+            ):
                 matching.append(page)
                 item = QListWidgetItem(page.metadata.title)
                 item.setData(Qt.ItemDataRole.UserRole, page)
                 if page.is_rtl:
                     item.setFont(QFont("Cairo", 10))
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
                 else:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                    )
                 self._list_widget.addItem(item)
 
         self._filtered_pages = tuple(matching)
@@ -210,12 +218,9 @@ class DocViewerDialog(QDialog):
         self._update_sidebar_toggle_button()
 
     def _update_sidebar_toggle_button(self) -> None:
-        compact = self.width() < 900
         self._toggle_btn.setIcon(icon_for("sidebar"))
         self._toggle_btn.setToolTip(
-            "إظهار أو إخفاء الشريط الجانبي"
-            if self._is_rtl
-            else "Show or hide the sidebar"
+            "إظهار أو إخفاء الشريط الجانبي" if self._is_rtl else "Show or hide the sidebar"
         )
 
     def _display_page(self, page: DocPage) -> None:
@@ -256,12 +261,12 @@ class DocViewerDialog(QDialog):
 
     def _goto_prev(self) -> None:
         if self._current_index > 0:
-            target = self._pages[self._current_index - 1]
+            self._pages[self._current_index - 1]
             self._sidebar._list_widget.setCurrentRow(self._current_index - 1)
 
     def _goto_next(self) -> None:
         if self._current_index < len(self._pages) - 1:
-            target = self._pages[self._current_index + 1]
+            self._pages[self._current_index + 1]
             self._sidebar._list_widget.setCurrentRow(self._current_index + 1)
 
     def _update_nav_buttons(self) -> None:

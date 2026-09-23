@@ -1,4 +1,5 @@
 """Tests for DIP processor implementations: intensity, spatial, edge, histogram, color."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -9,9 +10,7 @@ from dip_studio.processing.contracts import ProcessingRequest
 
 
 def _req(operation: str, **params: object) -> ProcessingRequest:
-    return ProcessingRequest(
-        operation, tuple((k, str(v)) for k, v in sorted(params.items()))
-    )
+    return ProcessingRequest(operation, tuple((k, str(v)) for k, v in sorted(params.items())))
 
 
 def _rgb(h: int, w: int, value: int = 128) -> np.ndarray:
@@ -19,6 +18,7 @@ def _rgb(h: int, w: int, value: int = 128) -> np.ndarray:
 
 
 # ──────────────────────────── Intensity ────────────────────────────
+
 
 class TestNegativeProcessor:
     def test_negative_inverts_pixels(self) -> None:
@@ -103,6 +103,7 @@ class TestBrightnessContrastProcessor:
 
 # ──────────────────────────── Histogram ────────────────────────────
 
+
 class TestHistogramEqualization:
     def test_equalization_preserves_shape(self) -> None:
         from dip_studio.processing.processors.histogram import HistogramEqualizationProcessor
@@ -111,9 +112,7 @@ class TestHistogramEqualization:
         arr = _rgb(8, 8)
         buf = store.allocate(arr)
         out = store.get(
-            HistogramEqualizationProcessor(store).process(
-                buf, _req("histogram_equalization")
-            )
+            HistogramEqualizationProcessor(store).process(buf, _req("histogram_equalization"))
         )
         assert out.shape == arr.shape
         assert out.dtype == np.uint8
@@ -125,14 +124,13 @@ class TestHistogramEqualization:
         arr = np.arange(256, dtype=np.uint8).reshape(16, 16)
         buf = store.allocate(arr)
         out = store.get(
-            HistogramEqualizationProcessor(store).process(
-                buf, _req("histogram_equalization")
-            )
+            HistogramEqualizationProcessor(store).process(buf, _req("histogram_equalization"))
         )
         assert out.shape == (16, 16)
 
 
 # ──────────────────────────── Spatial ──────────────────────────────
+
 
 class TestGaussianBlur:
     def test_blur_preserves_shape_and_dtype(self) -> None:
@@ -166,6 +164,7 @@ class TestGaussianBlur:
 
 # ──────────────────────────── Edge ─────────────────────────────────
 
+
 class TestSobelProcessor:
     def test_sobel_on_uniform_image_is_zero(self) -> None:
         from dip_studio.processing.processors.edge import SobelProcessor
@@ -198,9 +197,7 @@ class TestCannyProcessor:
         arr[3:7, 3:7, :] = 200
         buf = store.allocate(arr)
         out = store.get(
-            CannyProcessor(store).process(
-                buf, _req("canny", threshold1=50.0, threshold2=150.0)
-            )
+            CannyProcessor(store).process(buf, _req("canny", threshold1=50.0, threshold2=150.0))
         )
         # Canny output pixels must be 0 or 255
         unique_vals = set(out.flatten().tolist())
@@ -216,6 +213,7 @@ class TestCannyProcessor:
 
 
 # ──────────────────────────── Color ────────────────────────────────
+
 
 class TestGrayscaleProcessor:
     def test_grayscale_rgb_produces_equal_channels(self) -> None:

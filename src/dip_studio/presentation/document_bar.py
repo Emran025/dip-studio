@@ -47,9 +47,7 @@ class DocumentBar(QWidget):
         layout.addWidget(self._tabs, 1)
         layout.addWidget(new_button)
 
-    def set_documents(
-        self, documents: tuple[DocumentTab, ...], active_id: object
-    ) -> None:
+    def set_documents(self, documents: tuple[DocumentTab, ...], active_id: object) -> None:
         """Synchronize tabs with the controller's open document sessions."""
         self._tabs.blockSignals(True)
         while self._tabs.count():

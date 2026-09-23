@@ -1,17 +1,17 @@
 """Unit tests for layer selection, canvas hit testing, and interactive move commands."""
 
 import os
+
 import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from dip_studio.application.editor import EditorController
 from dip_studio.domain.factories import new_document
-from dip_studio.domain.model import Layer, LayerId, Transform
+from dip_studio.domain.model import Layer, LayerId
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.rendering.ports import BlankDocumentRenderer

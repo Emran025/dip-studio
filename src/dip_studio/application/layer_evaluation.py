@@ -3,6 +3,7 @@
 The concrete implementation lives in the rendering layer to honor DIP Studio's
 architecture boundaries, while existing imports continue to work.
 """
+
 from __future__ import annotations
 
 from dip_studio.rendering.layer_evaluation import (

@@ -5,6 +5,7 @@ the same conventions as ``dip_studio.domain.model``.
 
 Architecture: doc-12 specifies the CV object model.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,8 +17,8 @@ from dip_studio.core.errors import ValidationError
 class BoundingBox:
     """Axis-aligned bounding rectangle in image pixel coordinates."""
 
-    x: int          # left edge
-    y: int          # top edge
+    x: int  # left edge
+    y: int  # top edge
     width: int
     height: int
 
@@ -56,9 +57,9 @@ class DetectedObject:
     ``metadata``     — arbitrary string key→value pairs for extra fields.
     """
 
-    object_id: str                                   # UUID string
+    object_id: str  # UUID string
     class_name: str
-    confidence: float                                # 0.0–1.0
+    confidence: float  # 0.0–1.0
     bbox: BoundingBox
     centroid: tuple[float, float]
     contour_points: tuple[tuple[int, int], ...] = ()
@@ -101,17 +102,20 @@ class ObjectCollection:
     """
 
     frame_index: int
-    timestamp: float          # seconds since sequence start (0.0 for stills)
+    timestamp: float  # seconds since sequence start (0.0 for stills)
     objects: tuple[DetectedObject, ...]
     image_width: int
     image_height: int
 
-    def by_class(self, class_name: str) -> "ObjectCollection":
+    def by_class(self, class_name: str) -> ObjectCollection:
         """Return a new collection with only objects of the given class."""
         filtered = tuple(o for o in self.objects if o.class_name == class_name)
         return ObjectCollection(
-            self.frame_index, self.timestamp, filtered,
-            self.image_width, self.image_height,
+            self.frame_index,
+            self.timestamp,
+            filtered,
+            self.image_width,
+            self.image_height,
         )
 
     def __post_init__(self) -> None:
@@ -122,7 +126,10 @@ class ObjectCollection:
                 raise ValidationError("ObjectCollection.objects must contain DetectedObject values")
             if obj.bbox.x < 0 or obj.bbox.y < 0:
                 raise ValidationError("DetectedObject bbox coordinates must be non-negative")
-            if obj.bbox.x + obj.bbox.width > self.image_width or obj.bbox.y + obj.bbox.height > self.image_height:
+            if (
+                obj.bbox.x + obj.bbox.width > self.image_width
+                or obj.bbox.y + obj.bbox.height > self.image_height
+            ):
                 raise ValidationError("DetectedObject bbox falls outside image bounds")
 
     def __len__(self) -> int:
@@ -134,9 +141,9 @@ class TrajectoryPoint:
     """Single point in a tracked object's trajectory."""
 
     frame_index: int
-    timestamp: float   # seconds
-    x: float           # image-space x of centroid
-    y: float           # image-space y of centroid
+    timestamp: float  # seconds
+    x: float  # image-space x of centroid
+    y: float  # image-space y of centroid
     object_id: str
 
     def __post_init__(self) -> None:
@@ -188,8 +195,7 @@ class Trajectory:
         """Return list-of-lists suitable for ``csv.writer.writerows()``."""
         rows = [["object_id", "class_name", "frame", "timestamp", "x", "y"]]
         for p in self.points:
-            rows.append([self.object_id, self.class_name,
-                         p.frame_index, p.timestamp, p.x, p.y])
+            rows.append([self.object_id, self.class_name, p.frame_index, p.timestamp, p.x, p.y])
         return rows
 
     def __len__(self) -> int:

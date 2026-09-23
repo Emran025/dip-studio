@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QColorDialog,
-    QFrame,
-    QHBoxLayout,
     QPushButton,
     QToolButton,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -61,7 +58,9 @@ class ColorSwatchButton(QPushButton):
             half_w = rect.width() // 2
             half_h = rect.height() // 2
             painter.fillRect(rect.left(), rect.top(), half_w, half_h, Qt.GlobalColor.lightGray)
-            painter.fillRect(rect.left() + half_w, rect.top() + half_h, half_w, half_h, Qt.GlobalColor.lightGray)
+            painter.fillRect(
+                rect.left() + half_w, rect.top() + half_h, half_w, half_h, Qt.GlobalColor.lightGray
+            )
 
         # Fill color rectangle
         painter.fillRect(rect, self._color)
@@ -89,8 +88,8 @@ class DualColorSwatchWidget(QWidget):
         self.setObjectName("dualColorSwatch")
         self.setFixedSize(50, 50)
 
-        self._fg_color = QColor(0, 0, 0, 255)       # Default Black
-        self._bg_color = QColor(255, 255, 255, 255) # Default White
+        self._fg_color = QColor(0, 0, 0, 255)  # Default Black
+        self._bg_color = QColor(255, 255, 255, 255)  # Default White
 
         self._fg_button = ColorSwatchButton(self._fg_color, self)
         self._fg_button.setToolTip("Foreground color (Click to change)")
@@ -123,11 +122,21 @@ class DualColorSwatchWidget(QWidget):
 
     @property
     def foreground_rgba(self) -> tuple[int, int, int, int]:
-        return (self._fg_color.red(), self._fg_color.green(), self._fg_color.blue(), self._fg_color.alpha())
+        return (
+            self._fg_color.red(),
+            self._fg_color.green(),
+            self._fg_color.blue(),
+            self._fg_color.alpha(),
+        )
 
     @property
     def background_rgba(self) -> tuple[int, int, int, int]:
-        return (self._bg_color.red(), self._bg_color.green(), self._bg_color.blue(), self._bg_color.alpha())
+        return (
+            self._bg_color.red(),
+            self._bg_color.green(),
+            self._bg_color.blue(),
+            self._bg_color.alpha(),
+        )
 
     def set_foreground_color(self, color: QColor | tuple[int, int, int, int]) -> None:
         self._fg_button.set_color(color)

@@ -53,9 +53,9 @@ class Layer:
     name: str
     visible: bool = True
     opacity: float = 1.0
-    buffer_id: str | None = None   # reference into ImageDataStore
-    mask_id: str | None = None     # reference to a Mask id
-    blend_mode: str = "normal"     # "normal" | "multiply" | "screen" | "overlay" etc.
+    buffer_id: str | None = None  # reference into ImageDataStore
+    mask_id: str | None = None  # reference to a Mask id
+    blend_mode: str = "normal"  # "normal" | "multiply" | "screen" | "overlay" etc.
     transform: "Transform | None" = None
     locked: bool = False
 
@@ -109,8 +109,8 @@ class TextLayer(Layer):
     alignment: str = "left"
     # Writing direction: "ltr" | "rtl"
     direction: str = "ltr"
-    letter_spacing: float = 0.0   # extra spacing in pixels
-    line_spacing: float = 1.2     # multiplier (1.0 = single, 1.5 = 1.5×)
+    letter_spacing: float = 0.0  # extra spacing in pixels
+    line_spacing: float = 1.2  # multiplier (1.0 = single, 1.5 = 1.5×)
     # Optional semi-transparent background behind text
     background_color: tuple[int, int, int, int] = (0, 0, 0, 0)
 
@@ -259,22 +259,28 @@ class LayerTree:
         return self.layers
 
     def top_level(self) -> tuple[Layer, ...]:
-        ids = {child_id for layer in self.layers if isinstance(layer, GroupLayer) for child_id in layer.children}
+        ids = {
+            child_id
+            for layer in self.layers
+            if isinstance(layer, GroupLayer)
+            for child_id in layer.children
+        }
         return tuple(layer for layer in self.layers if layer.id not in ids)
 
 
 @dataclass(frozen=True, slots=True)
 class Mask:
     """Soft mask with values in [0.0, 1.0] stored in DataStore.
-    
+
     mode: 'reveal' (white = show) or 'hide' (black = show)
     """
+
     id: str  # UUID string
     name: str
     width: int
     height: int
-    mode: str = "reveal"           # "reveal" | "hide"
-    buffer_id: str | None = None   # float32 mask array in DataStore
+    mode: str = "reveal"  # "reveal" | "hide"
+    buffer_id: str | None = None  # float32 mask array in DataStore
     enabled: bool = True
 
     def __post_init__(self) -> None:
@@ -300,8 +306,8 @@ class SelectionRect:
     y: int
     width: int
     height: int
-    feather: float = 0.0        # pixel radius for soft edge
-    kind: str = "rectangle"     # "rectangle" | "ellipse" | "lasso" | "polygon"
+    feather: float = 0.0  # pixel radius for soft edge
+    kind: str = "rectangle"  # "rectangle" | "ellipse" | "lasso" | "polygon"
     mask_buffer_id: str | None = None  # non-rect selection mask (uint8 H×W)
 
     def __post_init__(self) -> None:
@@ -309,21 +315,29 @@ class SelectionRect:
             raise ValidationError("Selection dimensions must be positive")
         if self.feather < 0:
             raise ValidationError("Feather radius must be non-negative")
-        if self.kind not in ("rectangle", "ellipse", "lasso", "polygon", "color_selection", "color"):
+        if self.kind not in (
+            "rectangle",
+            "ellipse",
+            "lasso",
+            "polygon",
+            "color_selection",
+            "color",
+        ):
             raise ValidationError("Selection kind must be rectangle, ellipse, lasso, or polygon")
 
 
 @dataclass(frozen=True, slots=True)
 class Transform:
     """Affine transform stored as (tx, ty, sx, sy, rotation, skew_x, skew_y).
-    
+
     All transforms are relative to the layer's origin.
     rotation is in degrees.
     """
-    tx: float = 0.0        # translation x
-    ty: float = 0.0        # translation y
-    sx: float = 1.0        # scale x
-    sy: float = 1.0        # scale y
+
+    tx: float = 0.0  # translation x
+    ty: float = 0.0  # translation y
+    sx: float = 1.0  # scale x
+    sy: float = 1.0  # scale y
     rotation: float = 0.0  # degrees
     skew_x: float = 0.0
     skew_y: float = 0.0
@@ -334,10 +348,15 @@ class Transform:
 
     @property
     def is_identity(self) -> bool:
-        return (self.tx == 0.0 and self.ty == 0.0
-                and self.sx == 1.0 and self.sy == 1.0
-                and self.rotation == 0.0
-                and self.skew_x == 0.0 and self.skew_y == 0.0)
+        return (
+            self.tx == 0.0
+            and self.ty == 0.0
+            and self.sx == 1.0
+            and self.sy == 1.0
+            and self.rotation == 0.0
+            and self.skew_x == 0.0
+            and self.skew_y == 0.0
+        )
 
 
 @dataclass(frozen=True, slots=True)

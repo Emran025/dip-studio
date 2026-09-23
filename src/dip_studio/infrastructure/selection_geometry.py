@@ -9,6 +9,7 @@ Architecture: doc-06 Selections — rectangle | ellipse | lasso | polygon.
 The result mask is stored in ``SelectionRect.mask_buffer_id`` and used by
 the compositor and processors to apply operations only inside the selection.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -87,7 +88,7 @@ def rasterise_color_selection(
     seed_y: int,
     tolerance: int = 15,
 ) -> np.ndarray:
-    """Return uint8 mask (H, W) where 255 = contiguous region matching seed pixel color within tolerance."""
+    """Return uint8 mask (H, W) where 255 = contiguous region matching seed pixel color within tolerance."""  # noqa: E501
     h, w = arr.shape[:2]
     if h == 0 or w == 0:
         return np.zeros((h, w), dtype=np.uint8)
@@ -97,6 +98,7 @@ def rasterise_color_selection(
 
     try:
         import cv2
+
         if arr.ndim == 2:
             bgr = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
         elif arr.shape[2] == 4:
@@ -128,6 +130,7 @@ def rasterise_color_selection(
 # ---------------------------------------------------------------------------
 # Internal scanline fill (even-odd rule)
 # ---------------------------------------------------------------------------
+
 
 def _scanline_fill(w: int, h: int, pts: list[tuple[int, int]]) -> np.ndarray:
     """Even-odd scanline fill for an arbitrary polygon."""

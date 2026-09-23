@@ -1,8 +1,8 @@
 """Unit tests for ColorSwatchButton, DualColorSwatchWidget, and RGBA tuple color commands."""
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QColor
 import pytest
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication
 
 from dip_studio.application.editor import EditorController
 from dip_studio.infrastructure.data_store import ImageDataStore
@@ -53,7 +53,7 @@ def test_dual_color_swatch_widget_swap_and_reset() -> None:
 
 def test_draw_shape_with_explicit_rgba_tuples() -> None:
     controller = EditorController(BlankDocumentRenderer(), data_store=ImageDataStore())
-    doc = controller.create_document("ColorTest", 200, 200)
+    controller.create_document("ColorTest", 200, 200)
 
     res_doc = controller.draw_shape(
         "rectangle",

@@ -3,6 +3,7 @@
 Uses OpenCV for optimized implementations; pure-NumPy educational
 fallbacks require no extra dependencies beyond NumPy.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -13,6 +14,7 @@ from dip_studio.processing.processors._base import BaseProcessor, _param
 _CV2_AVAILABLE = False
 try:
     import cv2  # type: ignore[import-untyped]
+
     _CV2_AVAILABLE = True
 except ImportError:
     pass
@@ -59,13 +61,13 @@ def _numpy_median_blur(arr: np.ndarray, ksize: int) -> np.ndarray:
             padded = np.pad(ch, pad, mode="edge")
             for i in range(arr.shape[0]):
                 for j in range(arr.shape[1]):
-                    result[i, j, c] = np.median(padded[i:i + ksize, j:j + ksize])
+                    result[i, j, c] = np.median(padded[i : i + ksize, j : j + ksize])
         return result
     padded = np.pad(arr, pad, mode="edge")
     result = np.empty_like(arr)
     for i in range(arr.shape[0]):
         for j in range(arr.shape[1]):
-            result[i, j] = np.median(padded[i:i + ksize, j:j + ksize])
+            result[i, j] = np.median(padded[i : i + ksize, j : j + ksize])
     return result
 
 

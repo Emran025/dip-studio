@@ -1,4 +1,5 @@
 """In-memory document repository for tests and development."""
+
 from __future__ import annotations
 
 from dip_studio.domain.model import ImageDocument

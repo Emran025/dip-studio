@@ -10,6 +10,7 @@ commands (``AddTextLayer``, ``EditTextLayer``) and stored as the layer's
 Architecture: doc-06 TextLayer — "Text stays editable until rasterisation is
 explicitly requested."  This module is that rasterisation step.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from dip_studio.domain.model import TextLayer
 
 
-def rasterise_text(layer: "TextLayer", width: int, height: int) -> np.ndarray:
+def rasterise_text(layer: TextLayer, width: int, height: int) -> np.ndarray:
     """Render *layer*'s text into an RGBA uint8 ndarray of shape (height, width, 4).
 
     Uses ``QPainter.drawText()`` for accurate font metrics, kerning, and
@@ -40,7 +41,7 @@ def rasterise_text(layer: "TextLayer", width: int, height: int) -> np.ndarray:
     np.ndarray
         ``uint8`` RGBA array of shape ``(height, width, 4)``.
     """
-    from PySide6.QtCore import Qt, QRectF
+    from PySide6.QtCore import QRectF, Qt
     from PySide6.QtGui import (
         QColor,
         QFont,

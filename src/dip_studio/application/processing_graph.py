@@ -4,6 +4,7 @@ The document's ``AppliedOperation`` history is intentionally only audit
 metadata.  This module provides the separate executable representation needed
 for preview/evaluation without changing the document model.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,15 +36,15 @@ class ProcessingGraph:
 
     nodes: tuple[OperationNode, ...] = ()
 
-    def add(self, node: OperationNode) -> "ProcessingGraph":
+    def add(self, node: OperationNode) -> ProcessingGraph:
         if any(existing.id == node.id for existing in self.nodes):
             raise ValueError(f"Duplicate operation node id: {node.id}")
         return ProcessingGraph(self.nodes + (node,))
 
-    def remove(self, node_id: str) -> "ProcessingGraph":
+    def remove(self, node_id: str) -> ProcessingGraph:
         return ProcessingGraph(tuple(node for node in self.nodes if node.id != node_id))
 
-    def set_enabled(self, node_id: str, enabled: bool) -> "ProcessingGraph":
+    def set_enabled(self, node_id: str, enabled: bool) -> ProcessingGraph:
         found = False
         updated: list[OperationNode] = []
         for node in self.nodes:
@@ -59,7 +60,7 @@ class ProcessingGraph:
     def evaluate(
         self,
         image: str,
-        engine: "ProcessingEngine[str, str]",
+        engine: ProcessingEngine[str, str],
         *,
         cancellation: CancellationToken | None = None,
         progress: ProgressReporter | None = None,

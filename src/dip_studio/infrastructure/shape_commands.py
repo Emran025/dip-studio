@@ -1,4 +1,5 @@
 """Undoable shape drawing commands for DIP Studio."""
+
 from __future__ import annotations
 
 from dataclasses import replace

@@ -3,6 +3,7 @@
 Histogram equalization is implemented educationally in NumPy.
 CLAHE uses OpenCV when available.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -13,6 +14,7 @@ from dip_studio.processing.processors._base import BaseProcessor, _param
 _CV2_AVAILABLE = False
 try:
     import cv2  # type: ignore[import-untyped]
+
     _CV2_AVAILABLE = True
 except ImportError:
     pass
@@ -34,9 +36,9 @@ def _equalize_channel(channel: np.ndarray) -> np.ndarray:
     return lut[channel]
 
 
-
 class HistogramEqualizationProcessor(BaseProcessor):
     """NumPy educational global histogram equalization."""
+
     operation = "histogram_equalization"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
@@ -51,6 +53,7 @@ class HistogramEqualizationProcessor(BaseProcessor):
 
 class CLAHEProcessor(BaseProcessor):
     """Contrast Limited Adaptive Histogram Equalization via OpenCV."""
+
     operation = "clahe"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:

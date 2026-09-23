@@ -1,4 +1,5 @@
 """Integration test for rendering compositor."""
+
 from __future__ import annotations
 
 from io import BytesIO
@@ -7,16 +8,16 @@ import numpy as np
 import pytest
 from PIL import Image as PilImage
 
+from dip_studio.domain.model import Transform
 from dip_studio.rendering.compositor import (
     NumpyDocumentRenderer,
     _alpha_composite,
     _encode_jpeg,
     _encode_png,
     _fit_array_to_document,
-    _transform_layer,
     _to_rgba,
+    _transform_layer,
 )
-from dip_studio.domain.model import Transform
 
 
 class TestAlphaComposite:
@@ -105,8 +106,9 @@ def test_transform_layer_applies_translation_and_clips() -> None:
 def test_render_and_render_raw_share_the_same_evaluation() -> None:
     from types import SimpleNamespace
     from unittest.mock import MagicMock
-    from dip_studio.infrastructure.data_store import ImageDataStore
+
     from dip_studio.domain.model import ImageSpec, Layer
+    from dip_studio.infrastructure.data_store import ImageDataStore
     from dip_studio.rendering.ports import RenderRequest
 
     store = ImageDataStore()
@@ -129,8 +131,9 @@ def test_render_and_render_raw_share_the_same_evaluation() -> None:
 def test_render_raises_for_missing_layer_buffer() -> None:
     from types import SimpleNamespace
     from unittest.mock import MagicMock
-    from dip_studio.domain.model import ImageSpec, Layer
+
     from dip_studio.core.errors import RenderingError
+    from dip_studio.domain.model import ImageSpec, Layer
     from dip_studio.rendering.ports import RenderRequest
 
     document = SimpleNamespace(
@@ -141,17 +144,17 @@ def test_render_raises_for_missing_layer_buffer() -> None:
     controller.data_store.get.side_effect = KeyError("missing")
 
     with pytest.raises(RenderingError, match="missing buffer"):
-        NumpyDocumentRenderer(controller).render_raw(
-            RenderRequest("doc", 2, 2, 1.0)
-        )
+        NumpyDocumentRenderer(controller).render_raw(RenderRequest("doc", 2, 2, 1.0))
 
 
 class TestNumpyDocumentRenderer:
     def test_render_without_document_returns_blank(self) -> None:
         from unittest.mock import MagicMock
+
         controller = MagicMock()
         controller.document = None
         from dip_studio.rendering.ports import RenderRequest
+
         renderer = NumpyDocumentRenderer(controller)
         result = renderer.render(RenderRequest("doc1", 100, 100, 1.0))
         assert isinstance(result, bytes)
@@ -159,8 +162,10 @@ class TestNumpyDocumentRenderer:
 
     def test_render_invalid_viewport_raises(self) -> None:
         from unittest.mock import MagicMock
+
         controller = MagicMock()
         from dip_studio.rendering.ports import RenderRequest
+
         renderer = NumpyDocumentRenderer(controller)
         with pytest.raises(ValueError):
             renderer.render(RenderRequest("doc1", 0, 100, 1.0))

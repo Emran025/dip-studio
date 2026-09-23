@@ -1,13 +1,13 @@
 """Unit tests for DocParser, DocViewerDialog, and DocSidebarWidget."""
 
-from pathlib import Path
 import tempfile
-from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QFont
-import pytest
+from pathlib import Path
 
-from dip_studio.infrastructure.doc_parser import DocPage, DocParser
-from dip_studio.presentation.doc_viewer import DocSidebarWidget, DocViewerDialog
+import pytest
+from PySide6.QtWidgets import QApplication
+
+from dip_studio.infrastructure.doc_parser import DocParser
+from dip_studio.presentation.doc_viewer import DocViewerDialog
 from dip_studio.presentation.vector_icons import icon_for
 
 

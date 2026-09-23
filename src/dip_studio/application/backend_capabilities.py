@@ -1,4 +1,5 @@
 """Runtime capability discovery for optional processing backends."""
+
 from __future__ import annotations
 
 import importlib.util

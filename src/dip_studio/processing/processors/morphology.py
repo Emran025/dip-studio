@@ -3,6 +3,7 @@
 Uses OpenCV for GPU-accelerated implementations; pure-NumPy sliding-window
 fallbacks require only NumPy (no scipy dependency).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -13,6 +14,7 @@ from dip_studio.processing.processors._base import BaseProcessor, _param
 _CV2_AVAILABLE = False
 try:
     import cv2  # type: ignore[import-untyped]
+
     _CV2_AVAILABLE = True
 except ImportError:
     pass

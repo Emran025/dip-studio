@@ -3,6 +3,7 @@
 All processors follow the ``BaseProcessor`` contract. OpenCV is used for the
 actual detectors and failures are reported explicitly to the application.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -21,9 +22,7 @@ def _to_gray(arr: np.ndarray) -> np.ndarray:
         return arr.astype(np.uint8)
     if arr.shape[2] == 4:
         arr = arr[:, :, :3]
-    return (
-        0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
-    ).astype(np.uint8)
+    return (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]).astype(np.uint8)
 
 
 def _ensure_drawable(arr: np.ndarray) -> np.ndarray:

@@ -5,8 +5,8 @@ from dip_studio.application.editor import EditorController
 from dip_studio.core.cancellation import MutableCancellationToken
 from dip_studio.core.errors import ProcessingError
 from dip_studio.domain.factories import document_from_import
-from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.domain.model import ImageSpec
+from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.processing.contracts import ProcessingRequest
 from dip_studio.processing.engine import ProcessingEngine
 from dip_studio.rendering.ports import BlankDocumentRenderer

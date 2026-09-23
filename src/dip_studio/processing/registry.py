@@ -1,4 +1,5 @@
 """Assembles the ProcessingEngine with all registered processors."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -11,10 +12,14 @@ if TYPE_CHECKING:
 
 
 def build_processing_engine(
-    data_store: "ImageDataStore",
-    cache: "ProcessingCache | None" = None,
+    data_store: ImageDataStore,
+    cache: ProcessingCache | None = None,
 ) -> ProcessingEngine:  # type: ignore[type-arg]
     """Register all available processors and return the configured engine."""
+    # Phase G — Active contours
+    from dip_studio.processing.processors.active_contours import (
+        ActiveContoursProcessor,
+    )
     from dip_studio.processing.processors.analysis import (
         SegmentationProcessor,
         ThresholdProcessor,
@@ -23,10 +28,32 @@ def build_processing_engine(
         GrayscaleProcessor,
         HueSaturationProcessor,
     )
+
+    # Phase D — Computer Vision processors
+    from dip_studio.processing.processors.cv.feature_extraction import (
+        FastProcessor,
+        GlcmTextureProcessor,
+        OrbProcessor,
+        SiftProcessor,
+    )
+    from dip_studio.processing.processors.cv.object_detection import (
+        HoughCirclesProcessor,
+        HoughLinesProcessor,
+        TemplateMatchProcessor,
+    )
     from dip_studio.processing.processors.edge import (
         CannyProcessor,
         LaplacianProcessor,
         SobelProcessor,
+    )
+
+    # Phase 2 — Frequency-domain processors
+    from dip_studio.processing.processors.frequency import (
+        FftBandpassProcessor,
+        FftHighpassProcessor,
+        FftLowpassProcessor,
+        FftNotchProcessor,
+        FftSpectrumProcessor,
     )
     from dip_studio.processing.processors.histogram import (
         CLAHEProcessor,
@@ -44,6 +71,28 @@ def build_processing_engine(
         MorphCloseProcessor,
         MorphOpenProcessor,
     )
+
+    # Phase 2 — Restoration and noise processors
+    from dip_studio.processing.processors.restoration import (
+        DenoiseMeanProcessor,
+        DenoiseNLMProcessor,
+        DenoiseWienerProcessor,
+        MetricPsnrProcessor,
+        MetricSsimProcessor,
+        NoiseGaussianProcessor,
+        NoiseSaltPepperProcessor,
+        NoiseUniformProcessor,
+    )
+
+    # Phase 2 — Advanced segmentation processors
+    from dip_studio.processing.processors.segmentation_advanced import (
+        ConnectedComponentsProcessor,
+        ContourExtractProcessor,
+        GrabCutStubProcessor,
+        HuMomentsProcessor,
+        RegionGrowingProcessor,
+        WatershedProcessor,
+    )
     from dip_studio.processing.processors.spatial import (
         BilateralFilterProcessor,
         GaussianBlurProcessor,
@@ -58,50 +107,6 @@ def build_processing_engine(
         CropProcessor,
         FlipProcessor,
         RotateProcessor,
-    )
-    # Phase 2 — Frequency-domain processors
-    from dip_studio.processing.processors.frequency import (
-        FftBandpassProcessor,
-        FftHighpassProcessor,
-        FftLowpassProcessor,
-        FftNotchProcessor,
-        FftSpectrumProcessor,
-    )
-    # Phase 2 — Restoration and noise processors
-    from dip_studio.processing.processors.restoration import (
-        DenoiseMeanProcessor,
-        DenoiseNLMProcessor,
-        DenoiseWienerProcessor,
-        MetricPsnrProcessor,
-        MetricSsimProcessor,
-        NoiseGaussianProcessor,
-        NoiseSaltPepperProcessor,
-        NoiseUniformProcessor,
-    )
-    # Phase 2 — Advanced segmentation processors
-    from dip_studio.processing.processors.segmentation_advanced import (
-        ConnectedComponentsProcessor,
-        ContourExtractProcessor,
-        GrabCutStubProcessor,
-        HuMomentsProcessor,
-        RegionGrowingProcessor,
-        WatershedProcessor,
-    )
-    # Phase G — Active contours
-    from dip_studio.processing.processors.active_contours import (
-        ActiveContoursProcessor,
-    )
-    # Phase D — Computer Vision processors
-    from dip_studio.processing.processors.cv.feature_extraction import (
-        FastProcessor,
-        GlcmTextureProcessor,
-        OrbProcessor,
-        SiftProcessor,
-    )
-    from dip_studio.processing.processors.cv.object_detection import (
-        HoughCirclesProcessor,
-        HoughLinesProcessor,
-        TemplateMatchProcessor,
     )
 
     processors_list = [

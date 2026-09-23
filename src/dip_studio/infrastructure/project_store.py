@@ -114,7 +114,9 @@ class JsonProjectStore:
         parsed_operations = tuple(
             AppliedOperation(
                 self._as_str(item["operation"]),
-                tuple((self._as_str(pair[0]), self._as_str(pair[1])) for pair in item["parameters"]),
+                tuple(
+                    (self._as_str(pair[0]), self._as_str(pair[1])) for pair in item["parameters"]
+                ),
             )
             for item in (self._as_dict(value) for value in operations)
         )
@@ -126,9 +128,18 @@ class JsonProjectStore:
             self._selection_from_payload(self._as_dict(item))
             for item in (self._as_dict(value) for value in raw.get("selections", []))
         )
-        metadata = tuple((self._as_str(k), self._as_str(v)) for k, v in self._as_dict(raw.get("metadata", {})).items())
-        workspace_metadata = tuple((self._as_str(k), self._as_str(v)) for k, v in self._as_dict(raw.get("workspace_metadata", {})).items())
-        buffer_metadata = tuple((self._as_str(key), self._as_dict(value)) for key, value in self._as_dict(raw.get("buffer_metadata", {})).items())
+        metadata = tuple(
+            (self._as_str(k), self._as_str(v))
+            for k, v in self._as_dict(raw.get("metadata", {})).items()
+        )
+        workspace_metadata = tuple(
+            (self._as_str(k), self._as_str(v))
+            for k, v in self._as_dict(raw.get("workspace_metadata", {})).items()
+        )
+        buffer_metadata = tuple(
+            (self._as_str(key), self._as_dict(value))
+            for key, value in self._as_dict(raw.get("buffer_metadata", {})).items()
+        )
         cv_objects = tuple(self._as_dict(item) for item in raw.get("cv_objects", []))
         return ImageDocument(
             DocumentId(UUID(self._as_str(raw["id"]))),

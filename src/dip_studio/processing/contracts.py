@@ -1,7 +1,8 @@
 """Pure processing contracts; concrete algorithms live behind these ports."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol, TypeAlias, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from dip_studio.core.cancellation import CancellationToken, ProgressReporter
 from dip_studio.domain.cv_model import DetectedObject, Trajectory
@@ -19,6 +20,7 @@ class ProcessingRequest:
 @dataclass(frozen=True, slots=True)
 class ProcessingContext:
     """Immutable processing inputs and runtime services."""
+
     image: object
     mask: str | None
     selection: str | None
@@ -84,7 +86,7 @@ class TrajectoryResult:
                 raise TypeError("TrajectoryResult.trajectories must contain Trajectory values")
 
 
-ProcessingResult: TypeAlias = (
+type ProcessingResult = (
     ImageResult
     | MaskResult
     | SelectionResult

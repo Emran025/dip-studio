@@ -1,4 +1,5 @@
 """Application-owned storage for typed, non-pixel processing results."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -37,7 +38,9 @@ class ProcessingResultStore:
         if not result_id.strip():
             raise ValueError("Result id cannot be empty")
         if not isinstance(result, self._VALID_RESULT_TYPES):
-            raise TypeError("Processing result must be one of the typed processing result dataclasses")
+            raise TypeError(
+                "Processing result must be one of the typed processing result dataclasses"
+            )
         self._results.setdefault(str(document_id), {})[result_id] = result
 
     def get(self, document_id: object, result_id: str) -> ProcessingResult:

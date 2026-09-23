@@ -13,27 +13,42 @@ All processors extend BaseProcessor and work on NumPy arrays only.
 OpenCV and SciPy are used opportunistically when available but are never
 required — pure-NumPy fallbacks are provided.
 """
+
 from __future__ import annotations
 
 from collections import deque
 
 import numpy as np
 
+from dip_studio.core.errors import OptionalBackendError
 from dip_studio.processing.contracts import ProcessingRequest
 from dip_studio.processing.processors._base import BaseProcessor, _ensure_3ch, _param, _to_gray
-from dip_studio.core.errors import OptionalBackendError
-
 
 # ---------------------------------------------------------------------------
 # Colour palette for region labels
 # ---------------------------------------------------------------------------
 
 _PALETTE: list[tuple[int, int, int]] = [
-    (255, 59,  59),  (59,  189, 255), (102, 255, 102), (255, 200, 59),
-    (200, 59,  255), (59,  255, 200), (255, 130, 59),  (59,  59,  255),
-    (200, 255, 59),  (255, 59,  200), (59,  255, 130), (130, 59,  255),
-    (255, 102, 102), (102, 200, 255), (200, 255, 102), (255, 255, 102),
-    (102, 102, 255), (255, 102, 200), (102, 255, 255), (200, 200, 200),
+    (255, 59, 59),
+    (59, 189, 255),
+    (102, 255, 102),
+    (255, 200, 59),
+    (200, 59, 255),
+    (59, 255, 200),
+    (255, 130, 59),
+    (59, 59, 255),
+    (200, 255, 59),
+    (255, 59, 200),
+    (59, 255, 130),
+    (130, 59, 255),
+    (255, 102, 102),
+    (102, 200, 255),
+    (200, 255, 102),
+    (255, 255, 102),
+    (102, 102, 255),
+    (255, 102, 200),
+    (102, 255, 255),
+    (200, 200, 200),
 ]
 
 
@@ -45,6 +60,7 @@ def _label_to_colour(label: int) -> tuple[int, int, int]:
 # Pure-NumPy distance transform approximation (used as Watershed seed input)
 # ---------------------------------------------------------------------------
 
+
 def _approx_distance_transform(binary: np.ndarray) -> np.ndarray:
     """Return a rough distance-transform via iterative erosion (NumPy-only)."""
     dist = np.zeros(binary.shape, dtype=np.float32)
@@ -54,8 +70,10 @@ def _approx_distance_transform(binary: np.ndarray) -> np.ndarray:
         # Erode: a pixel survives if all 4-connected neighbours are True.
         eroded = (
             remaining
-            & np.roll(remaining, 1, 0) & np.roll(remaining, -1, 0)
-            & np.roll(remaining, 1, 1) & np.roll(remaining, -1, 1)
+            & np.roll(remaining, 1, 0)
+            & np.roll(remaining, -1, 0)
+            & np.roll(remaining, 1, 1)
+            & np.roll(remaining, -1, 1)
         )
         eroded[0, :] = False
         eroded[-1, :] = False
@@ -71,6 +89,7 @@ def _approx_distance_transform(binary: np.ndarray) -> np.ndarray:
 def _local_maxima(dist: np.ndarray, min_dist: int) -> np.ndarray:
     """Return boolean mask of local maxima separated by *min_dist* pixels."""
     from numpy.lib.stride_tricks import sliding_window_view
+
     k = max(3, 2 * min_dist + 1)
     pad = k // 2
     p = np.pad(dist, pad, mode="constant", constant_values=0)
@@ -82,6 +101,7 @@ def _local_maxima(dist: np.ndarray, min_dist: int) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Processors
 # ---------------------------------------------------------------------------
+
 
 class WatershedProcessor(BaseProcessor):
     """Watershed segmentation producing a coloured region map.
@@ -108,6 +128,7 @@ class WatershedProcessor(BaseProcessor):
         # Try OpenCV watershed first.
         try:
             import cv2  # type: ignore[import-untyped]
+
             dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
             _, sure_fg = cv2.threshold(dist, 0.4 * dist.max(), 255, 0)
             sure_fg = sure_fg.astype(np.uint8)
@@ -129,12 +150,13 @@ class WatershedProcessor(BaseProcessor):
         # Pure-NumPy fallback: distance transform + BFS region growing from seeds.
         try:
             from scipy.ndimage import distance_transform_edt  # type: ignore[import-untyped]
+
             dist = distance_transform_edt(binary).astype(np.float32)
         except ImportError:
             dist = _approx_distance_transform(binary)
 
         seeds_mask = _local_maxima(dist, min_dist)
-        seed_coords = list(zip(*np.where(seeds_mask)))
+        seed_coords = list(zip(*np.where(seeds_mask), strict=False))
         labels = np.zeros((h, w), dtype=np.int32)
         q: deque[tuple[int, int, int]] = deque()
         for idx, (sy, sx) in enumerate(seed_coords, start=1):
@@ -224,8 +246,10 @@ class ContourExtractProcessor(BaseProcessor):
         # Morphological erosion via 4-connected neighbour minimum.
         eroded = (
             binary
-            & np.roll(binary, 1, 0) & np.roll(binary, -1, 0)
-            & np.roll(binary, 1, 1) & np.roll(binary, -1, 1)
+            & np.roll(binary, 1, 0)
+            & np.roll(binary, -1, 0)
+            & np.roll(binary, 1, 1)
+            & np.roll(binary, -1, 1)
         )
         eroded[0, :] = 0
         eroded[-1, :] = 0
@@ -257,7 +281,7 @@ class HuMomentsProcessor(BaseProcessor):
         xx, yy = np.meshgrid(x_idx, y_idx)
 
         def _raw_moment(p: int, q: int) -> float:
-            return float(np.sum((xx ** p) * (yy ** q) * gray))
+            return float(np.sum((xx**p) * (yy**q) * gray))
 
         m00 = _raw_moment(0, 0)
         if m00 == 0:
@@ -272,11 +296,11 @@ class HuMomentsProcessor(BaseProcessor):
 
         mu = {(p, q): _central_moment(p, q) for p in range(4) for q in range(4) if p + q <= 3}
 
-        scale = m00 ** (1 + (2 + 0) / 2)
+        m00 ** (1 + (2 + 0) / 2)
 
         def eta(p: int, q: int) -> float:
             gamma = (p + q) / 2.0 + 1.0
-            denom = m00 ** gamma
+            denom = m00**gamma
             return mu[(p, q)] / (denom + 1e-12)
 
         n20, n02, n11 = eta(2, 0), eta(0, 2), eta(1, 1)
@@ -284,7 +308,7 @@ class HuMomentsProcessor(BaseProcessor):
 
         hu = [
             n20 + n02,
-            (n20 - n02) ** 2 + 4 * n11 ** 2,
+            (n20 - n02) ** 2 + 4 * n11**2,
             (n30 - 3 * n12) ** 2 + (3 * n21 - n03) ** 2,
             (n30 + n12) ** 2 + (n21 + n03) ** 2,
             (n30 - 3 * n12) * (n30 + n12) * ((n30 + n12) ** 2 - 3 * (n21 + n03) ** 2)
@@ -317,7 +341,7 @@ class ConnectedComponentsProcessor(BaseProcessor):
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
         thresh = int(float(_param(request, "threshold", "128")))
         gray = _to_gray(arr)
-        binary = (gray > thresh)
+        binary = gray > thresh
         h, w = binary.shape
         labels = np.zeros((h, w), dtype=np.int32)
         current_label = 0
@@ -332,7 +356,12 @@ class ConnectedComponentsProcessor(BaseProcessor):
                         y, x = q.popleft()
                         for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
                             ny, nx = y + dy, x + dx
-                            if 0 <= ny < h and 0 <= nx < w and binary[ny, nx] and labels[ny, nx] == 0:
+                            if (
+                                0 <= ny < h
+                                and 0 <= nx < w
+                                and binary[ny, nx]
+                                and labels[ny, nx] == 0
+                            ):
                                 labels[ny, nx] = current_label
                                 q.append((ny, nx))
 
@@ -360,9 +389,7 @@ class GrabCutStubProcessor(BaseProcessor):
         try:
             import cv2  # type: ignore[import-untyped]
         except ImportError as exc:
-            raise OptionalBackendError(
-                "grabcut requires the optional OpenCV backend"
-            ) from exc
+            raise OptionalBackendError("grabcut requires the optional OpenCV backend") from exc
 
         rgb = _ensure_3ch(arr)
         h, w = rgb.shape[:2]

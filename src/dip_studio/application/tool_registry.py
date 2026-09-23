@@ -131,8 +131,14 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             None,
             parameters=(
                 ToolParameter(
-                    "kernel_size", "Kernel Size", "integer", 5, 1, 51,
-                    step=2, validation=_is_odd_integer,
+                    "kernel_size",
+                    "Kernel Size",
+                    "integer",
+                    5,
+                    1,
+                    51,
+                    step=2,
+                    validation=_is_odd_integer,
                 ),
                 ToolParameter("sigma", "Sigma", "number", 1.0, 0.1, 10.0),
             ),
@@ -143,10 +149,18 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Remove salt-and-pepper noise",
             None,
-            parameters=(ToolParameter(
-                "kernel_size", "Kernel Size", "integer", 5, 1, 21,
-                step=2, validation=_is_odd_integer,
-            ),),
+            parameters=(
+                ToolParameter(
+                    "kernel_size",
+                    "Kernel Size",
+                    "integer",
+                    5,
+                    1,
+                    21,
+                    step=2,
+                    validation=_is_odd_integer,
+                ),
+            ),
         ),
         ToolDefinition(
             "bilateral_filter",
@@ -166,10 +180,18 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Uniform box filter denoising",
             None,
-            parameters=(ToolParameter(
-                "kernel_size", "Kernel Size", "integer", 3, 1, 31,
-                step=2, validation=_is_odd_integer,
-            ),),
+            parameters=(
+                ToolParameter(
+                    "kernel_size",
+                    "Kernel Size",
+                    "integer",
+                    3,
+                    1,
+                    31,
+                    step=2,
+                    validation=_is_odd_integer,
+                ),
+            ),
         ),
         ToolDefinition("sobel", "Sobel", "Filter", "Sobel edge detection", None),
         ToolDefinition(
@@ -208,10 +230,18 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Morphological erosion",
             None,
-            parameters=(ToolParameter(
-                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
-                step=2, validation=_is_odd_integer,
-            ),),
+            parameters=(
+                ToolParameter(
+                    "kernel_size",
+                    "Kernel Size",
+                    "integer",
+                    3,
+                    1,
+                    21,
+                    step=2,
+                    validation=_is_odd_integer,
+                ),
+            ),
         ),
         ToolDefinition(
             "dilate",
@@ -219,10 +249,18 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Morphological dilation",
             None,
-            parameters=(ToolParameter(
-                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
-                step=2, validation=_is_odd_integer,
-            ),),
+            parameters=(
+                ToolParameter(
+                    "kernel_size",
+                    "Kernel Size",
+                    "integer",
+                    3,
+                    1,
+                    21,
+                    step=2,
+                    validation=_is_odd_integer,
+                ),
+            ),
         ),
         ToolDefinition(
             "morph_open",
@@ -230,10 +268,18 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Opening: erode then dilate",
             None,
-            parameters=(ToolParameter(
-                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
-                step=2, validation=_is_odd_integer,
-            ),),
+            parameters=(
+                ToolParameter(
+                    "kernel_size",
+                    "Kernel Size",
+                    "integer",
+                    3,
+                    1,
+                    21,
+                    step=2,
+                    validation=_is_odd_integer,
+                ),
+            ),
         ),
         ToolDefinition(
             "morph_close",
@@ -241,10 +287,18 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             "Filter",
             "Closing: dilate then erode",
             None,
-            parameters=(ToolParameter(
-                "kernel_size", "Kernel Size", "integer", 3, 1, 21,
-                step=2, validation=_is_odd_integer,
-            ),),
+            parameters=(
+                ToolParameter(
+                    "kernel_size",
+                    "Kernel Size",
+                    "integer",
+                    3,
+                    1,
+                    21,
+                    step=2,
+                    validation=_is_odd_integer,
+                ),
+            ),
         ),
         ToolDefinition("grayscale", "Grayscale", "Filter", "Convert to grayscale", None),
         ToolDefinition(
@@ -260,14 +314,22 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             ),
         ),
         ToolDefinition(
-            "watershed", "Watershed", "Segmentation", "Split touching regions", None,
+            "watershed",
+            "Watershed",
+            "Segmentation",
+            "Split touching regions",
+            None,
             parameters=(
                 ToolParameter("min_distance", "Minimum Distance", "integer", 10, 1, 100),
                 ToolParameter("threshold", "Threshold", "integer", 0, 0, 255),
             ),
         ),
         ToolDefinition(
-            "region_growing", "Region Growing", "Segmentation", "Grow a region from a seed", None,
+            "region_growing",
+            "Region Growing",
+            "Segmentation",
+            "Grow a region from a seed",
+            None,
             parameters=(
                 ToolParameter("seed_x", "Seed X", "integer", 0, 0, 10000),
                 ToolParameter("seed_y", "Seed Y", "integer", 0, 0, 10000),
@@ -275,7 +337,11 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             ),
         ),
         ToolDefinition(
-            "contour_extract", "Contour Extract", "Segmentation", "Extract object contours", None,
+            "contour_extract",
+            "Contour Extract",
+            "Segmentation",
+            "Extract object contours",
+            None,
             parameters=(
                 ToolParameter("threshold", "Threshold", "integer", 128, 0, 255),
                 ToolParameter("color_r", "Contour Red", "integer", 0, 0, 255),
@@ -284,20 +350,34 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             ),
         ),
         ToolDefinition(
-            "hu_moments", "Hu Moments", "Segmentation", "Describe shape invariants", None,
+            "hu_moments",
+            "Hu Moments",
+            "Segmentation",
+            "Describe shape invariants",
+            None,
         ),
         ToolDefinition(
-            "connected_components", "Connected Components", "Segmentation",
-            "Label connected regions", None,
+            "connected_components",
+            "Connected Components",
+            "Segmentation",
+            "Label connected regions",
+            None,
             parameters=(ToolParameter("threshold", "Threshold", "integer", 128, 0, 255),),
         ),
         ToolDefinition(
-            "grabcut", "GrabCut", "Segmentation", "Extract foreground from a rectangle", None,
+            "grabcut",
+            "GrabCut",
+            "Segmentation",
+            "Extract foreground from a rectangle",
+            None,
             parameters=(ToolParameter("margin", "Margin", "number", 0.1, 0.01, 0.49),),
         ),
         ToolDefinition(
-            "active_contours", "Active Contours", "Segmentation",
-            "Fit a snake to image boundaries", None,
+            "active_contours",
+            "Active Contours",
+            "Segmentation",
+            "Fit a snake to image boundaries",
+            None,
             parameters=(
                 ToolParameter("alpha", "Elasticity", "number", 0.015, 0.001, 1.0),
                 ToolParameter("beta", "Rigidity", "number", 10.0, 0.0, 100.0),
@@ -307,7 +387,11 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             ),
         ),
         ToolDefinition(
-            "hough_circles", "Hough Circles", "Detection", "Detect circular objects", None,
+            "hough_circles",
+            "Hough Circles",
+            "Detection",
+            "Detect circular objects",
+            None,
             parameters=(
                 ToolParameter("dp", "Accumulator Ratio", "number", 1.0, 0.1, 10.0),
                 ToolParameter("min_dist", "Minimum Distance", "number", 20.0, 1.0, 1000.0),
@@ -318,7 +402,11 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             ),
         ),
         ToolDefinition(
-            "hough_lines", "Hough Lines", "Detection", "Detect straight line segments", None,
+            "hough_lines",
+            "Hough Lines",
+            "Detection",
+            "Detect straight line segments",
+            None,
             parameters=(
                 ToolParameter("threshold", "Accumulator Threshold", "integer", 80, 1, 1000),
                 ToolParameter("min_length", "Minimum Length", "number", 50.0, 1.0, 5000.0),
@@ -326,16 +414,25 @@ def processing_tool_definitions() -> tuple[ToolDefinition, ...]:
             ),
         ),
         ToolDefinition(
-            "template_match", "Template Match", "Detection",
-            "Find the selected region in the active image", None,
+            "template_match",
+            "Template Match",
+            "Detection",
+            "Find the selected region in the active image",
+            None,
             parameters=(
                 ToolParameter(
-                    "template_buffer_id", "Template", "text", "",
+                    "template_buffer_id",
+                    "Template",
+                    "text",
+                    "",
                     read_only=True,
                     description="Uses the current canvas selection as the template.",
                 ),
                 ToolParameter(
-                    "method", "Method", "choice", "TM_CCOEFF_NORMED",
+                    "method",
+                    "Method",
+                    "choice",
+                    "TM_CCOEFF_NORMED",
                     choices=("TM_CCOEFF_NORMED", "TM_SQDIFF_NORMED"),
                 ),
             ),
@@ -363,9 +460,7 @@ def default_tool_registry() -> InMemoryToolRegistry:
                 "Create an elliptical selection",
                 "O",
             ),
-            ToolDefinition(
-                "lasso", "Lasso", "Selection", "Create a freehand selection", "L"
-            ),
+            ToolDefinition("lasso", "Lasso", "Selection", "Create a freehand selection", "L"),
             ToolDefinition(
                 "polygon_selection",
                 "Polygon selection",
@@ -379,9 +474,7 @@ def default_tool_registry() -> InMemoryToolRegistry:
                 "Selection",
                 "Select pixels by color",
                 None,
-                parameters=(
-                    ToolParameter("tolerance", "Tolerance", "integer", 15, 0, 255),
-                ),
+                parameters=(ToolParameter("tolerance", "Tolerance", "integer", 15, 0, 255),),
             ),
             ToolDefinition(
                 "crop",
@@ -396,9 +489,7 @@ def default_tool_registry() -> InMemoryToolRegistry:
                     ToolParameter("height", "Height", "integer", 300, 1, 10000),
                 ),
             ),
-            ToolDefinition(
-                "move", "Move", "Transform", "Move the active layer or selection", None
-            ),
+            ToolDefinition("move", "Move", "Transform", "Move the active layer or selection", None),
             ToolDefinition(
                 "transform",
                 "Transform",
@@ -451,13 +542,9 @@ def default_tool_registry() -> InMemoryToolRegistry:
                 ),
             ),
             ToolDefinition("gradient", "Gradient", "Paint", "Apply a gradient", "G"),
-            ToolDefinition(
-                "brush", "Brush", "Paint", "Paint with a soft or hard brush", "Shift+B"
-            ),
+            ToolDefinition("brush", "Brush", "Paint", "Paint with a soft or hard brush", "Shift+B"),
             ToolDefinition("pencil", "Pencil", "Paint", "Draw hard-edged strokes", None),
-            ToolDefinition(
-                "eraser", "Eraser", "Paint", "Erase pixels or layer content", "Shift+E"
-            ),
+            ToolDefinition("eraser", "Eraser", "Paint", "Erase pixels or layer content", "Shift+E"),
             ToolDefinition("fill", "Fill", "Paint", "Fill a connected region", "F"),
             ToolDefinition(
                 "clone", "Clone stamp", "Retouch", "Clone pixels from a source point", None
@@ -512,8 +599,14 @@ def default_tool_registry() -> InMemoryToolRegistry:
                         choices=("Erode", "Dilate", "Open", "Close"),
                     ),
                     ToolParameter(
-                        "kernel_size", "Kernel Size", "integer", 3, 1, 31,
-                        step=2, validation=_is_odd_integer,
+                        "kernel_size",
+                        "Kernel Size",
+                        "integer",
+                        3,
+                        1,
+                        31,
+                        step=2,
+                        validation=_is_odd_integer,
                     ),
                 ),
             ),
@@ -523,9 +616,7 @@ def default_tool_registry() -> InMemoryToolRegistry:
                 "Analysis",
                 "Segment image regions",
                 None,
-                parameters=(
-                    ToolParameter("clusters", "Regions", "integer", 3, 2, 10),
-                ),
+                parameters=(ToolParameter("clusters", "Regions", "integer", 3, 2, 10),),
             ),
         )
     )

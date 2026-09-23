@@ -7,9 +7,7 @@ from dip_studio.application.backend_capabilities import (
 def test_backend_capabilities_are_discoverable_without_importing_processors() -> None:
     capabilities = discover_backend_capabilities()
 
-    assert {capability.name for capability in capabilities} == {
-        "opencv", "scikit-image", "scipy"
-    }
+    assert {capability.name for capability in capabilities} == {"opencv", "scikit-image", "scipy"}
     assert all(isinstance(capability.available, bool) for capability in capabilities)
 
 

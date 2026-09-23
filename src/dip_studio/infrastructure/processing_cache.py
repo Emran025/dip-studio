@@ -6,6 +6,7 @@ Cache key is built from:
 Entries are evicted LRU-style when the cache exceeds ``max_entries``.
 The cache is thread-safe; all public methods acquire the same lock.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -20,10 +21,10 @@ class CacheKey:
     """Immutable key identifying a unique processor run."""
 
     buffer_id: str
-    buffer_version: int     # from ImageDataStore.version(buffer_id)
+    buffer_version: int  # from ImageDataStore.version(buffer_id)
     operation: str
     operation_version: str
-    params_hash: str        # sha256 hex of canonicalised parameters
+    params_hash: str  # sha256 hex of canonicalised parameters
     mask_id: str | None = None
     mask_version: int | None = None
     selection_id: str | None = None
@@ -43,7 +44,7 @@ class CacheKey:
         selection_id: str | None = None,
         selection_version: int | None = None,
         preview_mode: bool = False,
-    ) -> "CacheKey":
+    ) -> CacheKey:
         """Construct a CacheKey from raw request parameters."""
         canonical = json.dumps(
             sorted((str(name), str(value)) for name, value in parameters),

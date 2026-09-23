@@ -1,4 +1,5 @@
 """Tests for history jumping and history navigation in UndoRedoHistory and EditorController."""
+
 from __future__ import annotations
 
 from uuid import uuid4

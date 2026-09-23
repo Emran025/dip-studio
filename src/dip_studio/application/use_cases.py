@@ -1,4 +1,5 @@
 """High-level application use cases."""
+
 from __future__ import annotations
 
 from dip_studio.application.ports import DocumentRepository

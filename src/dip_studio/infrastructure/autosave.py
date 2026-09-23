@@ -10,9 +10,9 @@ Architecture: doc-12 Phase 6 Professionalization — autosave/recovery.
 The composition root in ``composition.py`` creates one instance and calls
 ``start()`` after the main window is ready.
 """
+
 from __future__ import annotations
 
-import json
 import os
 import re
 from pathlib import Path
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 try:
     from PySide6.QtCore import QObject, QTimer, Signal
+
     _QT_AVAILABLE = True
 except ImportError:
     _QT_AVAILABLE = False
@@ -55,7 +56,11 @@ def _recovery_files_for(
         return ()
     target_prefix = _safe_recovery_name(document_name) if document_name else None
     paths: list[Path] = []
-    for candidate in sorted(base.iterdir(), key=lambda item: item.stat().st_mtime_ns if item.is_file() else 0, reverse=True):
+    for candidate in sorted(
+        base.iterdir(),
+        key=lambda item: item.stat().st_mtime_ns if item.is_file() else 0,
+        reverse=True,
+    ):
         if not candidate.is_file():
             continue
         lower = candidate.name.lower()
@@ -73,10 +78,11 @@ def discover_recovery_files(
     recovery_dir: Path | None = None,
 ) -> tuple[Path, ...]:
     """Return recovery snapshots discovered on disk, ignoring partial writes."""
-    base = (recovery_dir or _recovery_dir())
+    base = recovery_dir or _recovery_dir()
     base.mkdir(parents=True, exist_ok=True)
     return tuple(
-        path for path in _recovery_files_for(document_name, recovery_dir=base)
+        path
+        for path in _recovery_files_for(document_name, recovery_dir=base)
         if not path.name.endswith(".tmp")
     )
 
@@ -130,7 +136,11 @@ def cleanup_recovery_files(
     valid_paths: list[Path] = []
     document_prefix = _safe_recovery_name(document_name) if document_name else None
     recovery_pattern = re.compile(r".*_recovery(?:_\d+)?\.dip$")
-    for candidate in sorted(base.iterdir(), key=lambda item: item.stat().st_mtime_ns if item.is_file() else 0, reverse=True):
+    for candidate in sorted(
+        base.iterdir(),
+        key=lambda item: item.stat().st_mtime_ns if item.is_file() else 0,
+        reverse=True,
+    ):
         if not candidate.is_file():
             continue
         if candidate.name.endswith(".tmp"):
@@ -174,6 +184,7 @@ def find_latest_recovery_file(
 
 
 if _QT_AVAILABLE:
+
     class AutosaveWorker(QObject):
         """Periodically saves the active document to a recovery .dip file.
 
@@ -191,9 +202,9 @@ if _QT_AVAILABLE:
 
         def __init__(
             self,
-            controller: "EditorController",
+            controller: EditorController,
             interval_seconds: int = 120,
-            parent: "QObject | None" = None,
+            parent: QObject | None = None,
             max_generations: int = 8,
         ) -> None:
             super().__init__(parent)
@@ -203,6 +214,7 @@ if _QT_AVAILABLE:
             self._interval_ms = interval_seconds * 1_000
             self._max_generations = max_generations
             from dip_studio.presentation.background_worker import BackgroundWorker
+
             self._worker = BackgroundWorker(self)
             self._saving = False
             self._timer = QTimer(self)
@@ -227,10 +239,16 @@ if _QT_AVAILABLE:
             return discover_recovery_files(document_name=document_name)
 
         def restore_latest_recovery(self, document_name: str | None = None) -> Any | None:
-            path = find_latest_recovery_file(document_name=document_name, project_store=self._controller._project_store)
+            path = find_latest_recovery_file(
+                document_name=document_name, project_store=self._controller._project_store
+            )
             if path is None:
                 return None
-            return self._controller._project_store.load(path) if self._controller._project_store is not None else None
+            return (
+                self._controller._project_store.load(path)
+                if self._controller._project_store is not None
+                else None
+            )
 
         def cleanup_recovery_files(
             self,
@@ -269,8 +287,12 @@ if _QT_AVAILABLE:
             try:
                 self._saving = True
                 self._worker.submit(
-                    fn=lambda _token, _reporter: self._controller.save_document_snapshot(doc, recovery_path),
-                    on_done=lambda saved: self._on_saved(recovery_path) if saved else self._on_stale_snapshot(),
+                    fn=lambda _token, _reporter: self._controller.save_document_snapshot(
+                        doc, recovery_path
+                    ),
+                    on_done=lambda saved: (
+                        self._on_saved(recovery_path) if saved else self._on_stale_snapshot()
+                    ),
                     on_error=self._on_error,
                 )
             except (OSError, RuntimeError, ValueError) as exc:
@@ -279,7 +301,10 @@ if _QT_AVAILABLE:
 
         def _on_saved(self, path: Path) -> None:
             self._saving = False
-            cleanup_recovery_files(document_name=path.stem.replace("_recovery", ""), max_generations=self._max_generations)
+            cleanup_recovery_files(
+                document_name=path.stem.replace("_recovery", ""),
+                max_generations=self._max_generations,
+            )
             self.saved.emit(str(path))
 
         def _on_stale_snapshot(self) -> None:
@@ -296,7 +321,7 @@ else:
 
         def __init__(
             self,
-            controller: "EditorController",
+            controller: EditorController,
             interval_seconds: int = 120,
             parent: object = None,
             max_generations: int = 8,

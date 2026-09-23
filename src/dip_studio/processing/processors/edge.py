@@ -1,4 +1,5 @@
 """Edge detection processors: Sobel, Canny, Laplacian."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -9,6 +10,7 @@ from dip_studio.processing.processors._base import BaseProcessor, _param, _to_gr
 _CV2_AVAILABLE = False
 try:
     import cv2  # type: ignore[import-untyped]
+
     _CV2_AVAILABLE = True
 except ImportError:
     pass
@@ -16,6 +18,7 @@ except ImportError:
 
 class SobelProcessor(BaseProcessor):
     """Sobel edge magnitude map. Educational NumPy implementation available."""
+
     operation = "sobel"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
@@ -28,22 +31,30 @@ class SobelProcessor(BaseProcessor):
             kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float64)
             ky = kx.T
             from numpy import pad
-            p = pad(gray.astype(np.float64), 1, mode='edge')
+
+            p = pad(gray.astype(np.float64), 1, mode="edge")
             sx = sum(
-                kx[i, j] * p[i:i+gray.shape[0], j:j+gray.shape[1]]
-                for i in range(3) for j in range(3)
+                kx[i, j] * p[i : i + gray.shape[0], j : j + gray.shape[1]]
+                for i in range(3)
+                for j in range(3)
             )
             sy = sum(
-                ky[i, j] * p[i:i+gray.shape[0], j:j+gray.shape[1]]
-                for i in range(3) for j in range(3)
+                ky[i, j] * p[i : i + gray.shape[0], j : j + gray.shape[1]]
+                for i in range(3)
+                for j in range(3)
             )
         magnitude = np.sqrt(sx**2 + sy**2)
-        magnitude = (magnitude / magnitude.max() * 255).clip(0, 255).astype(np.uint8) if magnitude.max() > 0 else magnitude.astype(np.uint8)
+        magnitude = (
+            (magnitude / magnitude.max() * 255).clip(0, 255).astype(np.uint8)
+            if magnitude.max() > 0
+            else magnitude.astype(np.uint8)
+        )
         return np.stack([magnitude, magnitude, magnitude], axis=-1) if arr.ndim == 3 else magnitude
 
 
 class CannyProcessor(BaseProcessor):
     """Canny edge detector (requires OpenCV)."""
+
     operation = "canny"
 
     def validate(self, request: ProcessingRequest) -> None:
@@ -66,6 +77,7 @@ class CannyProcessor(BaseProcessor):
 
 class LaplacianProcessor(BaseProcessor):
     """Laplacian sharpening/edge detection."""
+
     operation = "laplacian"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
@@ -76,11 +88,18 @@ class LaplacianProcessor(BaseProcessor):
         else:
             kernel = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=np.float64)
             from numpy import pad
-            p = pad(gray.astype(np.float64), 1, mode='edge')
+
+            p = pad(gray.astype(np.float64), 1, mode="edge")
             lap = np.zeros_like(gray, dtype=np.float64)
             for i in range(3):
                 for j in range(3):
-                    lap += kernel[i, j] * p[i:i+gray.shape[0], j:j+gray.shape[1]]
+                    lap += kernel[i, j] * p[i : i + gray.shape[0], j : j + gray.shape[1]]
             lap = np.abs(lap)
-        normalized = (lap / lap.max() * 255).clip(0, 255).astype(np.uint8) if lap.max() > 0 else lap.astype(np.uint8)
-        return np.stack([normalized, normalized, normalized], axis=-1) if arr.ndim == 3 else normalized
+        normalized = (
+            (lap / lap.max() * 255).clip(0, 255).astype(np.uint8)
+            if lap.max() > 0
+            else lap.astype(np.uint8)
+        )
+        return (
+            np.stack([normalized, normalized, normalized], axis=-1) if arr.ndim == 3 else normalized
+        )

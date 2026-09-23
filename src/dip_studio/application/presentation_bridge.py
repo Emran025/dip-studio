@@ -1,4 +1,5 @@
 """Application factories used by presentation without exposing domain imports."""
+
 from __future__ import annotations
 
 from dip_studio.domain.model import Layer, SelectionRect, TextLayer
@@ -40,30 +41,37 @@ def rasterise_ellipse(
     radius_y: int,
 ):
     from dip_studio.infrastructure.selection_geometry import rasterise_ellipse as rasterise
+
     return rasterise(width, height, center_x, center_y, radius_x, radius_y)
 
 
 def rasterise_lasso(width: int, height: int, points: list[tuple[int, int]]):
     from dip_studio.infrastructure.selection_geometry import rasterise_lasso as rasterise
+
     return rasterise(width, height, points)
 
 
 def rasterise_polygon(width: int, height: int, points: list[tuple[int, int]]):
     from dip_studio.infrastructure.selection_geometry import rasterise_polygon as rasterise
+
     return rasterise(width, height, points)
 
 
 def rasterise_color_selection(arr: object, seed_x: int, seed_y: int, tolerance: int = 15):
     from dip_studio.infrastructure.selection_geometry import rasterise_color_selection as rasterise
+
     return rasterise(arr, seed_x, seed_y, tolerance)
 
 
 def is_group_layer(layer: object) -> bool:
     from dip_studio.domain.model import GroupLayer
+
     return isinstance(layer, GroupLayer)
 
 
 def parse_doc_directory(docs_dir: object) -> tuple[object, ...]:
     from pathlib import Path
+
     from dip_studio.infrastructure.doc_parser import DocParser
+
     return DocParser.parse_directory(Path(str(docs_dir)))

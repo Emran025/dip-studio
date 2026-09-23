@@ -1,9 +1,10 @@
 """Tests for the plugin system: PluginRegistry, PluginLoader, and global_registry."""
+
 from __future__ import annotations
 
 import pytest
 
-from dip_studio.processing.contracts import ProcessingRequest, Processor
+from dip_studio.processing.contracts import ProcessingRequest
 from dip_studio.processing.engine import ProcessingEngine
 from dip_studio.processing.plugins import (
     API_VERSION,
@@ -12,8 +13,8 @@ from dip_studio.processing.plugins import (
     global_registry,
 )
 
-
 # ─────────────────── Stub Processor ───────────────────
+
 
 class _NoopProcessor:
     operation = "noop_test"
@@ -26,6 +27,7 @@ class _NoopProcessor:
 
 
 # ─────────────────── Stub Plugin ───────────────────
+
 
 class _GoodPlugin:
     plugin_id = "test_good_plugin"
@@ -44,6 +46,7 @@ class _WrongVersionPlugin:
 
 
 # ─────────────────── Tests ───────────────────
+
 
 class TestPluginRegistry:
     def test_register_good_plugin(self) -> None:
@@ -107,6 +110,7 @@ class TestProcessingEngineExtensions:
 class TestPluginLoader:
     def test_load_nonexistent_directory(self, tmp_path: object) -> None:
         import pathlib
+
         registry = PluginRegistry()
         loader = PluginLoader(registry)
         count = loader.load_from_directory(pathlib.Path("/nonexistent_dir_xyz"))
@@ -120,6 +124,7 @@ class TestPluginLoader:
 
     def test_load_from_directory_with_plugin_file(self, tmp_path: object) -> None:
         import pathlib
+
         tmp = pathlib.Path(str(tmp_path))
         plugin_file = tmp / "my_plugin.py"
         plugin_file.write_text(

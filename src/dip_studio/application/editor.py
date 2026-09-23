@@ -1,15 +1,19 @@
 """Application-facing editor orchestration for the first vertical slice."""
+
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from dip_studio.application.backend_capabilities import (
+    BackendCapability,
+    discover_backend_capabilities,
+)
 from dip_studio.application.commands import ApplyProcessing, ReplaceDocument
 from dip_studio.application.history import UndoRedoHistory
-from dip_studio.core.errors import PersistenceError, ProcessingError
 from dip_studio.application.layer_commands import (
     AddLayer,
     ChangeLayer,
@@ -23,32 +27,29 @@ from dip_studio.application.layer_commands import (
     RenameLayer,
 )
 from dip_studio.application.ports import ImageImporter, ProjectStore
-from dip_studio.application.session import DocumentSession
 from dip_studio.application.result_store import ProcessingResultStore
-from dip_studio.application.backend_capabilities import (
-    BackendCapability,
-    discover_backend_capabilities,
-)
+from dip_studio.application.session import DocumentSession
 from dip_studio.application.tool_registry import (
     ToolDefinition,
     ToolRegistry,
     default_tool_registry,
 )
+from dip_studio.core.errors import PersistenceError, ProcessingError
 from dip_studio.domain.factories import document_from_import, new_document
 from dip_studio.domain.model import (
     AppliedOperation,
+    DocumentId,
     ImageDocument,
     Layer,
     LayerId,
     ShapeLayer,
     Transform,
 )
-from dip_studio.processing.contracts import ProcessingRequest
-from dip_studio.processing.contracts import ProcessingResult
+from dip_studio.infrastructure.data_store import ImageDataStore
+from dip_studio.processing.contracts import ProcessingRequest, ProcessingResult
 from dip_studio.processing.engine import ProcessingEngine
 from dip_studio.processing.plugins import PluginActivationFailure
 from dip_studio.rendering.ports import RenderEngine, RenderRequest
-from dip_studio.infrastructure.data_store import ImageDataStore
 
 if TYPE_CHECKING:
     from dip_studio.infrastructure.data_store import ImageDataStore
@@ -108,6 +109,7 @@ class EditorController:
             self._processing = processing_engine
         else:
             from dip_studio.processing.engine import ProcessingEngine as _PE
+
             self._processing = _PE({})
 
     @property
@@ -166,9 +168,7 @@ class EditorController:
             raise RuntimeError("Image import is not configured")
         imported = self._image_importer.import_image(path)
         # Pass buffer_id into the background layer so the renderer can use it
-        document = document_from_import(
-            imported.name, imported.spec, path.stem, imported.buffer_id
-        )
+        document = document_from_import(imported.name, imported.spec, path.stem, imported.buffer_id)
         self._activate_new_document(document)
         if imported.preview is not None:
             self._previews[str(document.id)] = imported.preview
@@ -249,9 +249,7 @@ class EditorController:
             )
         layers = tuple(layers_list)
         document = self._session.document
-        self._history_for_active().execute(
-            PasteLayers(layers, len(document.layers)), self._session
-        )
+        self._history_for_active().execute(PasteLayers(layers, len(document.layers)), self._session)
         return self._session.document
 
     def copy_selection_to_clipboard(
@@ -296,9 +294,7 @@ class EditorController:
             )
         )
 
-    def _snapshot_clipboard_layers(
-        self, layers: Iterable[Layer]
-    ) -> tuple[Layer, ...]:
+    def _snapshot_clipboard_layers(self, layers: Iterable[Layer]) -> tuple[Layer, ...]:
         """Detach clipboard layers from the source document's pixel buffers."""
         if self._data_store is None:
             raise RuntimeError("Image data storage is not configured")
@@ -364,9 +360,7 @@ class EditorController:
             name=imported.name or path.stem,
             buffer_id=imported.buffer_id,
         )
-        self._history_for_active().execute(
-            AddLayer(new_layer), self._session
-        )
+        self._history_for_active().execute(AddLayer(new_layer), self._session)
         return self._session.document
 
     def _activate_new_document(self, document: ImageDocument) -> None:
@@ -376,9 +370,7 @@ class EditorController:
         self._histories[key] = UndoRedoHistory()
         self._session = session
 
-    def preview(
-        self, viewport_width: int, viewport_height: int, zoom: float = 1.0
-    ) -> bytes:
+    def preview(self, viewport_width: int, viewport_height: int, zoom: float = 1.0) -> bytes:
         document = self.document
         if document is None:
             raise RuntimeError("No active document")
@@ -393,10 +385,7 @@ class EditorController:
             RenderRequest(str(document.id), viewport_width, viewport_height, zoom)
         )
 
-
-    def preview_processing(
-        self, operation: str, parameters: dict[str, object]
-    ) -> bytes | None:
+    def preview_processing(self, operation: str, parameters: dict[str, object]) -> bytes | None:
         """Run a processing operation without mutating the document.
 
         Raises:
@@ -408,14 +397,15 @@ class EditorController:
             raise ProcessingError("Cannot preview processing without a document")
         request = self._request(operation, parameters)
         # Get the first layer with a buffer_id
-        layer = next(
-            (la for la in document.layers if la.buffer_id is not None), None
-        )
+        layer = next((la for la in document.layers if la.buffer_id is not None), None)
         if layer is None or self._data_store is None or layer.buffer_id is None:
             raise ProcessingError("Cannot preview processing without a buffered layer")
         result_buffer_id = self._processing.run(layer.buffer_id, request)
         active_buf_ids = {
-            la.buffer_id for doc in self.open_documents for la in doc.layers if la.buffer_id is not None
+            la.buffer_id
+            for doc in self.open_documents
+            for la in doc.layers
+            if la.buffer_id is not None
         }
         if result_buffer_id in active_buf_ids:
             raise ProcessingError(
@@ -424,6 +414,7 @@ class EditorController:
         # Encode result as JPEG preview bytes
         try:
             from dip_studio.rendering.compositor import _encode_jpeg
+
             arr = self._data_store.get(result_buffer_id)
             # Release the temporary buffer safely
             if result_buffer_id not in active_buf_ids:
@@ -434,9 +425,7 @@ class EditorController:
                 self._data_store.release(result_buffer_id)
             raise ProcessingError(f"Could not encode preview for '{operation}'") from exc
 
-    def apply_processing(
-        self, operation: str, parameters: dict[str, object]
-    ) -> ImageDocument:
+    def apply_processing(self, operation: str, parameters: dict[str, object]) -> ImageDocument:
         request = self._request(operation, parameters)
         # Target the active layer if one is tracked.
         layer_id = self._active_layer_id
@@ -475,9 +464,7 @@ class EditorController:
 
         layer = self._find_processing_layer(document)
         if layer is None or layer.buffer_id is None or self._data_store is None:
-            error = ProcessingError(
-                f"Cannot apply '{operation}': no buffered target layer"
-            )
+            error = ProcessingError(f"Cannot apply '{operation}': no buffered target layer")
             if on_error is not None:
                 on_error(error)
             return None
@@ -527,9 +514,7 @@ class EditorController:
                 or any(
                     not self._data_store.has(buffer_id)
                     or self._data_store.version(buffer_id) != version
-                    for buffer_id, version in (
-                        snapshot.mask_versions + snapshot.selection_versions
-                    )
+                    for buffer_id, version in (snapshot.mask_versions + snapshot.selection_versions)
                 )
             ):
                 if isinstance(result_buffer_id, str) and self._data_store is not None:
@@ -538,16 +523,12 @@ class EditorController:
                     on_stale()
                 return
             if not isinstance(result_buffer_id, str) or not result_buffer_id:
-                error = ProcessingError(
-                    f"Processor '{operation}' returned an invalid buffer"
-                )
+                error = ProcessingError(f"Processor '{operation}' returned an invalid buffer")
                 if on_error is not None:
                     on_error(error)
                 return
             if result_buffer_id == captured_buffer_id:
-                error = ProcessingError(
-                    f"Processor '{operation}' produced no new result buffer"
-                )
+                error = ProcessingError(f"Processor '{operation}' produced no new result buffer")
                 if on_error is not None:
                     on_error(error)
                 return
@@ -562,9 +543,7 @@ class EditorController:
                     operations=current.operations
                     + (AppliedOperation(operation, request.parameters),),
                 )
-                self._history_for_active().execute(
-                    ReplaceDocument(new_document), self._session
-                )
+                self._history_for_active().execute(ReplaceDocument(new_document), self._session)
             except Exception as exc:
                 if self._data_store.has(result_buffer_id):
                     self._data_store.release(result_buffer_id)
@@ -588,8 +567,7 @@ class EditorController:
                 (
                     layer
                     for layer in document.layers
-                    if layer.id == self._active_layer_id
-                    and layer.buffer_id is not None
+                    if layer.id == self._active_layer_id and layer.buffer_id is not None
                 ),
                 None,
             )
@@ -603,11 +581,11 @@ class EditorController:
     # ------------------------------------------------------------------
 
     @property
-    def active_layer_id(self) -> "LayerId | None":
+    def active_layer_id(self) -> LayerId | None:
         """The ID of the currently selected layer, or None when unset."""
         return self._active_layer_id
 
-    def set_active_layer(self, layer_id: "LayerId | None") -> None:
+    def set_active_layer(self, layer_id: LayerId | None) -> None:
         """Record which layer the user has selected in the layer panel."""
         self._active_layer_id = layer_id
 
@@ -616,7 +594,7 @@ class EditorController:
         doc = self.document
         return doc.selections[-1] if doc and doc.selections else None
 
-    def set_selection(self, selection: object | None) -> "ImageDocument | None":
+    def set_selection(self, selection: object | None) -> ImageDocument | None:
         """Set or update active selection rect / mask on current document."""
         doc = self.document
         if doc is None:
@@ -633,7 +611,7 @@ class EditorController:
         fill_color_name: str | tuple[int, int, int, int] = "Red",
         stroke_color_name: str | tuple[int, int, int, int] = "Black",
         stroke_width: int = 2,
-    ) -> "ImageDocument | None":
+    ) -> ImageDocument | None:
         """Draw a vector/raster shape on the active layer."""
         from dip_studio.infrastructure.shape_commands import DrawShape
 
@@ -660,9 +638,7 @@ class EditorController:
         self._previews.pop(str(self._session.document.id), None)
         return self._session.document
 
-    def color_selection(
-        self, x: int, y: int, tolerance: int = 15
-    ) -> "ImageDocument | None":
+    def color_selection(self, x: int, y: int, tolerance: int = 15) -> ImageDocument | None:
         """Magic Wand: select connected pixels with matching color at (x, y)."""
         doc = self.document
         store = self.data_store
@@ -686,9 +662,7 @@ class EditorController:
         except Exception:
             return None
 
-    def translate_layer(
-        self, layer_id: "LayerId", dx: float, dy: float
-    ) -> "ImageDocument":
+    def translate_layer(self, layer_id: LayerId, dx: float, dy: float) -> ImageDocument:
         """Translate a layer while keeping its content inside the document."""
         from dip_studio.application.layer_commands import TranslateLayer
 
@@ -709,9 +683,7 @@ class EditorController:
         scale_y = abs(float(transform.sy)) if transform else 1.0
 
         if isinstance(layer, ShapeLayer) and len(layer.vertices) >= 4:
-            base_x, base_y, width, height = (
-                float(value) for value in layer.vertices[:4]
-            )
+            base_x, base_y, width, height = (float(value) for value in layer.vertices[:4])
         elif layer.buffer_id is not None and self._data_store is not None:
             try:
                 buffer = self._data_store.get(layer.buffer_id)
@@ -752,18 +724,16 @@ class EditorController:
         return self._session.document
 
     def resize_shape_layer(
-        self, layer_id: "LayerId", rect: tuple[int, int, int, int]
-    ) -> "ImageDocument":
+        self, layer_id: LayerId, rect: tuple[int, int, int, int]
+    ) -> ImageDocument:
         """Resize a vector shape while preserving its editable layer identity."""
         from dip_studio.infrastructure.shape_commands import ResizeShapeLayer
 
-        self._history_for_active().execute(
-            ResizeShapeLayer(layer_id, rect), self._session
-        )
+        self._history_for_active().execute(ResizeShapeLayer(layer_id, rect), self._session)
         self._previews.pop(str(self._session.document.id), None)
         return self._session.document
 
-    def hit_test_layer(self, x: int, y: int) -> "Layer | None":
+    def hit_test_layer(self, x: int, y: int) -> Layer | None:
         """Return the top-most visible layer containing pixel content at (x, y)."""
         doc = self.document
         store = self.data_store
@@ -774,9 +744,7 @@ class EditorController:
             if not layer.visible:
                 continue
             if isinstance(layer, ShapeLayer):
-                x0, y0, width, height = (
-                    int(round(value)) for value in layer.vertices[:4]
-                )
+                x0, y0, width, height = (int(round(value)) for value in layer.vertices[:4])
                 transform = layer.transform
                 tx = int(transform.tx) if transform else 0
                 ty = int(transform.ty) if transform else 0
@@ -784,7 +752,9 @@ class EditorController:
                 sy = transform.sy if transform else 1.0
                 right = x0 + tx + int(width * sx)
                 bottom = y0 + ty + int(height * sy)
-                if min(x0 + tx, right) <= x <= max(x0 + tx, right) and min(y0 + ty, bottom) <= y <= max(y0 + ty, bottom):
+                if min(x0 + tx, right) <= x <= max(x0 + tx, right) and min(
+                    y0 + ty, bottom
+                ) <= y <= max(y0 + ty, bottom):
                     return layer
             elif layer.buffer_id is not None and store is not None:
                 try:
@@ -811,6 +781,7 @@ class EditorController:
     @staticmethod
     def make_selection(**kwargs: object) -> object:
         from dip_studio.domain.model import SelectionRect
+
         return SelectionRect(**kwargs)  # type: ignore[arg-type]
 
     # ------------------------------------------------------------------
@@ -819,12 +790,12 @@ class EditorController:
 
     def paint_stroke(
         self,
-        points: "list[tuple[int, int]]",
-        color: "tuple[int, int, int, int]",
+        points: list[tuple[int, int]],
+        color: tuple[int, int, int, int],
         size: int = 10,
         hardness: float = 0.8,
         opacity: float = 1.0,
-    ) -> "ImageDocument | None":
+    ) -> ImageDocument | None:
         """Paint a brush stroke into the active layer buffer.
 
         Returns the updated document or None if no paintable layer is found.
@@ -850,11 +821,11 @@ class EditorController:
 
     def eraser_stroke(
         self,
-        points: "list[tuple[int, int]]",
+        points: list[tuple[int, int]],
         size: int = 20,
         hardness: float = 0.8,
         opacity: float = 1.0,
-    ) -> "ImageDocument | None":
+    ) -> ImageDocument | None:
         """Erase pixels from the active layer (reduces alpha).
 
         Returns the updated document or None if no erasable layer is found.
@@ -881,9 +852,9 @@ class EditorController:
         self,
         x: int,
         y: int,
-        color: "tuple[int, int, int, int]",
+        color: tuple[int, int, int, int],
         tolerance: int = 15,
-    ) -> "ImageDocument | None":
+    ) -> ImageDocument | None:
         """BFS flood-fill into the active layer at pixel (x, y).
 
         Returns the updated document or None if no fillable layer is found.
@@ -941,36 +912,20 @@ class EditorController:
         self._history_for_active().jump_to(index, self._session)
         return self._session.document
 
-    def set_layer_visibility(
-        self, layer_id: LayerId, visible: bool
-    ) -> ImageDocument:
-        self._history_for_active().execute(
-            ChangeLayer(layer_id, visible=visible), self._session
-        )
+    def set_layer_visibility(self, layer_id: LayerId, visible: bool) -> ImageDocument:
+        self._history_for_active().execute(ChangeLayer(layer_id, visible=visible), self._session)
         return self._session.document
 
-    def set_layers_visibility(
-        self, layer_ids: tuple[LayerId, ...], visible: bool
-    ) -> ImageDocument:
-        self._history_for_active().execute(
-            ChangeLayers(layer_ids, visible=visible), self._session
-        )
+    def set_layers_visibility(self, layer_ids: tuple[LayerId, ...], visible: bool) -> ImageDocument:
+        self._history_for_active().execute(ChangeLayers(layer_ids, visible=visible), self._session)
         return self._session.document
 
-    def set_layer_opacity(
-        self, layer_id: LayerId, opacity: float
-    ) -> ImageDocument:
-        self._history_for_active().execute(
-            ChangeLayer(layer_id, opacity=opacity), self._session
-        )
+    def set_layer_opacity(self, layer_id: LayerId, opacity: float) -> ImageDocument:
+        self._history_for_active().execute(ChangeLayer(layer_id, opacity=opacity), self._session)
         return self._session.document
 
-    def set_layers_opacity(
-        self, layer_ids: tuple[LayerId, ...], opacity: float
-    ) -> ImageDocument:
-        self._history_for_active().execute(
-            ChangeLayers(layer_ids, opacity=opacity), self._session
-        )
+    def set_layers_opacity(self, layer_ids: tuple[LayerId, ...], opacity: float) -> ImageDocument:
+        self._history_for_active().execute(ChangeLayers(layer_ids, opacity=opacity), self._session)
         return self._session.document
 
     def resize_layer_to_rect(
@@ -1015,9 +970,12 @@ class EditorController:
             raise KeyError(f"Buffer not found: {layer.buffer_id}")
         try:
             import io
+
             from PIL import Image as PilImage
+
             with PilImage.open(io.BytesIO(preview)) as image:
                 from dip_studio.infrastructure.preview_decoder import decode_rgba
+
                 array = decode_rgba(image)
             restored_id = self._data_store.allocate(array)
         except (OSError, ValueError, TypeError) as error:
@@ -1030,9 +988,7 @@ class EditorController:
         return restored_id
 
     def rename_layer(self, layer_id: LayerId, name: str) -> ImageDocument:
-        self._history_for_active().execute(
-            RenameLayer(layer_id, name), self._session
-        )
+        self._history_for_active().execute(RenameLayer(layer_id, name), self._session)
         return self._session.document
 
     def add_layer(self, name: str = "Layer") -> ImageDocument:
@@ -1056,9 +1012,7 @@ class EditorController:
         )
         return self._session.document
 
-    def set_layer_blend_mode(
-        self, layer_id: LayerId, blend_mode: str
-    ) -> ImageDocument:
+    def set_layer_blend_mode(self, layer_id: LayerId, blend_mode: str) -> ImageDocument:
         from dip_studio.application.layer_commands import SetLayerBlendMode
 
         self._history_for_active().execute(
@@ -1066,22 +1020,14 @@ class EditorController:
         )
         return self._session.document
 
-    def set_layer_locked(
-        self, layer_id: LayerId, locked: bool
-    ) -> ImageDocument:
+    def set_layer_locked(self, layer_id: LayerId, locked: bool) -> ImageDocument:
         from dip_studio.application.layer_commands import SetLayerLocked
 
-        self._history_for_active().execute(
-            SetLayerLocked(layer_id, locked), self._session
-        )
+        self._history_for_active().execute(SetLayerLocked(layer_id, locked), self._session)
         return self._session.document
 
-    def set_layers_locked(
-        self, layer_ids: tuple[LayerId, ...], locked: bool
-    ) -> ImageDocument:
-        self._history_for_active().execute(
-            ChangeLayersLocked(layer_ids, locked), self._session
-        )
+    def set_layers_locked(self, layer_ids: tuple[LayerId, ...], locked: bool) -> ImageDocument:
+        self._history_for_active().execute(ChangeLayersLocked(layer_ids, locked), self._session)
         return self._session.document
 
     def group_layers(self, layer_ids: tuple[LayerId, ...]) -> ImageDocument:
@@ -1095,9 +1041,7 @@ class EditorController:
     def ungroup_layer(self, layer_id: LayerId) -> ImageDocument:
         from dip_studio.application.layer_commands import UngroupLayer
 
-        self._history_for_active().execute(
-            UngroupLayer(layer_id), self._session
-        )
+        self._history_for_active().execute(UngroupLayer(layer_id), self._session)
         self._active_layer_id = None
         return self._session.document
 
@@ -1149,7 +1093,7 @@ class EditorController:
 
         if layer_id is not None:
             idx = next(
-                (i for i, l in enumerate(document.layers) if l.id == layer_id),
+                (i for i, layer in enumerate(document.layers) if layer.id == layer_id),
                 len(document.layers) - 1,
             )
         else:
@@ -1217,9 +1161,7 @@ class EditorController:
                         layer.buffer_id, x, y, width, height, doc_w, doc_h
                     )
 
-        self._history_for_active().execute(
-            CropDocument(new_w, new_h, buffer_map), self._session
-        )
+        self._history_for_active().execute(CropDocument(new_w, new_h, buffer_map), self._session)
         self._previews.pop(str(document.id), None)
         return self._session.document
 
@@ -1227,24 +1169,16 @@ class EditorController:
         self._history_for_active().execute(RemoveLayer(layer_id), self._session)
         return self._session.document
 
-    def remove_layers(
-        self, layer_ids: tuple[LayerId, ...]
-    ) -> ImageDocument:
-        self._history_for_active().execute(
-            RemoveLayers(layer_ids), self._session
-        )
+    def remove_layers(self, layer_ids: tuple[LayerId, ...]) -> ImageDocument:
+        self._history_for_active().execute(RemoveLayers(layer_ids), self._session)
         return self._session.document
 
     def move_layer(self, layer_id: LayerId, delta: int) -> ImageDocument:
-        self._history_for_active().execute(
-            MoveLayer(layer_id, delta), self._session
-        )
+        self._history_for_active().execute(MoveLayer(layer_id, delta), self._session)
         return self._session.document
 
     @staticmethod
-    def _request(
-        operation: str, parameters: dict[str, object]
-    ) -> ProcessingRequest:
+    def _request(operation: str, parameters: dict[str, object]) -> ProcessingRequest:
         return ProcessingRequest(
             operation,
             tuple((key, str(value)) for key, value in sorted(parameters.items())),

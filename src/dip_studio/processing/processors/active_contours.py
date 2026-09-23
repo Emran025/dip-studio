@@ -5,16 +5,16 @@ Raises an explicit optional-backend error when scikit-image is absent.
 
 Architecture: doc-07 segmentation / doc-12 roadmap Phase 4.
 """
+
 from __future__ import annotations
 
 import importlib.util
 
 import numpy as np
 
-from dip_studio.processing.processors._base import BaseProcessor
-from dip_studio.processing.processors._base import _param
-from dip_studio.processing.contracts import ProcessingRequest
 from dip_studio.core.errors import OptionalBackendError
+from dip_studio.processing.contracts import ProcessingRequest
+from dip_studio.processing.processors._base import BaseProcessor, _param
 
 _SKIMAGE = importlib.util.find_spec("skimage") is not None
 
@@ -24,7 +24,9 @@ def _to_gray(arr: np.ndarray) -> np.ndarray:
         return arr.astype(np.float64) / 255.0
     if arr.shape[2] == 4:
         arr = arr[:, :, :3]
-    return (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]).astype(np.float64) / 255.0
+    return (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]).astype(
+        np.float64
+    ) / 255.0
 
 
 class ActiveContoursProcessor(BaseProcessor):
@@ -57,22 +59,22 @@ class ActiveContoursProcessor(BaseProcessor):
         cx, cy = w // 2, h // 2
 
         if not _SKIMAGE:
-            raise OptionalBackendError(
-                "active_contours requires the optional scikit-image backend"
-            )
+            raise OptionalBackendError("active_contours requires the optional scikit-image backend")
 
-        from skimage.segmentation import active_contour  # type: ignore
         from skimage.filters import gaussian as sk_gaussian  # type: ignore
+        from skimage.segmentation import active_contour  # type: ignore
 
         gray = _to_gray(arr)
         smoothed = sk_gaussian(gray, sigma=3)
 
         # Build circular initial contour.
         t = np.linspace(0, 2 * np.pi, 400)
-        snake_init = np.array([
-            cy + init_radius * np.sin(t),
-            cx + init_radius * np.cos(t),
-        ]).T
+        snake_init = np.array(
+            [
+                cy + init_radius * np.sin(t),
+                cx + init_radius * np.cos(t),
+            ]
+        ).T
 
         snake = active_contour(
             smoothed,
@@ -83,8 +85,10 @@ class ActiveContoursProcessor(BaseProcessor):
             max_num_iter=max_iter,
         )
 
-        print(f"[ActiveContours] Contour settled: {len(snake)} points "
-              f"cx≈{snake[:, 1].mean():.1f} cy≈{snake[:, 0].mean():.1f}")
+        print(
+            f"[ActiveContours] Contour settled: {len(snake)} points "
+            f"cx≈{snake[:, 1].mean():.1f} cy≈{snake[:, 0].mean():.1f}"
+        )
 
         # Draw the contour on the result.
         out: np.ndarray

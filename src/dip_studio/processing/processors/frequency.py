@@ -12,17 +12,18 @@ fft_highpass   : ideal / Butterworth / Gaussian high-pass filter
 fft_bandpass   : band-pass (inner + outer radius)
 fft_notch      : notch (reject) filter at a custom frequency coordinate
 """
+
 from __future__ import annotations
 
 import numpy as np
 
 from dip_studio.processing.contracts import ProcessingRequest
-from dip_studio.processing.processors._base import BaseProcessor, _ensure_3ch, _param, _to_gray
-
+from dip_studio.processing.processors._base import BaseProcessor, _param, _to_gray
 
 # ---------------------------------------------------------------------------
 # Frequency-domain mask builders
 # ---------------------------------------------------------------------------
+
 
 def _distance_map(h: int, w: int) -> np.ndarray:
     """Return (H, W) float64 array of Euclidean distance from the DC centre."""
@@ -30,7 +31,7 @@ def _distance_map(h: int, w: int) -> np.ndarray:
     y = np.arange(h, dtype=np.float64) - cy
     x = np.arange(w, dtype=np.float64) - cx
     yy, xx = np.meshgrid(y, x, indexing="ij")
-    return np.sqrt(yy ** 2 + xx ** 2)
+    return np.sqrt(yy**2 + xx**2)
 
 
 def _lowpass_mask(h: int, w: int, radius: float, kind: str, order: int = 2) -> np.ndarray:
@@ -74,6 +75,7 @@ def _per_channel_filter(arr: np.ndarray, mask: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Processors
 # ---------------------------------------------------------------------------
+
 
 class FftSpectrumProcessor(BaseProcessor):
     """Render the log-magnitude FFT spectrum as a displayable greyscale image."""
@@ -155,10 +157,7 @@ class FftBandpassProcessor(BaseProcessor):
         high_r = float(_param(request, "high_radius", "40"))
         kind = _param(request, "filter_type", "gaussian").lower()
         order = int(float(_param(request, "order", "2")))
-        mask = (
-            _highpass_mask(h, w, low_r, kind, order)
-            * _lowpass_mask(h, w, high_r, kind, order)
-        )
+        mask = _highpass_mask(h, w, low_r, kind, order) * _lowpass_mask(h, w, high_r, kind, order)
         return _per_channel_filter(arr, mask)
 
 
@@ -186,7 +185,7 @@ class FftNotchProcessor(BaseProcessor):
 
         def _gauss_notch(ox: float, oy: float) -> np.ndarray:
             d2 = (xx - ox) ** 2 + (yy - oy) ** 2
-            return np.exp(-0.5 * d2 / (nr ** 2 + 1e-9))
+            return np.exp(-0.5 * d2 / (nr**2 + 1e-9))
 
         # Reject the notch frequency and its symmetric partner.
         mask = 1.0 - _gauss_notch(nx, ny) - _gauss_notch(-nx, -ny)

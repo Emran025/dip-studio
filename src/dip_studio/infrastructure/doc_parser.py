@@ -3,12 +3,12 @@
 Supports frontmatter metadata, automatic Arabic/RTL language detection, Cairo typography,
 alert callouts, and relative image URI resolution against the documentation root directory.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,7 +17,7 @@ class DocMetadata:
     order: int = 100
     category: str = "General"
     direction: str = "ltr"  # "rtl" | "ltr"
-    lang: str = "en"       # "ar" | "en"
+    lang: str = "en"  # "ar" | "en"
     icon: str = "document"
     summary: str = ""
 
@@ -59,7 +59,11 @@ class DocParser:
         base_dir = root_dir or file_path.parent
 
         metadata, body_text = cls._extract_metadata_and_body(text, file_path.stem)
-        is_rtl = metadata.direction == "rtl" or metadata.lang == "ar" or bool(cls.ARABIC_REGEX.search(body_text[:500]))
+        is_rtl = (
+            metadata.direction == "rtl"
+            or metadata.lang == "ar"
+            or bool(cls.ARABIC_REGEX.search(body_text[:500]))
+        )
 
         # Update metadata direction/lang if detected Arabic
         if is_rtl and metadata.direction != "rtl":
@@ -109,8 +113,10 @@ class DocParser:
                         if k == "title":
                             title = v
                         elif k == "order":
-                            try: order = int(v)
-                            except ValueError: pass
+                            try:
+                                order = int(v)
+                            except ValueError:
+                                pass
                         elif k == "category":
                             category = v
                         elif k == "direction":
@@ -149,7 +155,7 @@ class DocParser:
             alt = match.group(1)
             src = match.group(2)
             abs_src = cls._resolve_image_uri(src, base_dir)
-            return f'<img src="{abs_src}" alt="{alt}" style="max-width:100%; height:auto; border-radius:6px; margin:10px 0;" />'
+            return f'<img src="{abs_src}" alt="{alt}" style="max-width:100%; height:auto; border-radius:6px; margin:10px 0;" />'  # noqa: E501
 
         html = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", replace_img_md, html)
 
@@ -165,11 +171,18 @@ class DocParser:
             kind = match.group(1).upper()
             content = match.group(2).strip()
             bg_color = "#1e293b" if "NOTE" in kind else "#064e3b" if "TIP" in kind else "#7f1d1d"
-            border_color = "#3b82f6" if "NOTE" in kind else "#10b981" if "TIP" in kind else "#ef4444"
+            border_color = (
+                "#3b82f6" if "NOTE" in kind else "#10b981" if "TIP" in kind else "#ef4444"
+            )
             title = "ملاحظة" if "NOTE" in kind else "تلميح" if "TIP" in kind else "تحذير"
-            return f'<div style="background-color:{bg_color}; border-left:4px solid {border_color}; padding:10px 14px; margin:12px 0; border-radius:4px;"><strong style="color:{border_color};">{title}:</strong> {content}</div>'
+            return f'<div style="background-color:{bg_color}; border-left:4px solid {border_color}; padding:10px 14px; margin:12px 0; border-radius:4px;"><strong style="color:{border_color};">{title}:</strong> {content}</div>'  # noqa: E501
 
-        html = re.sub(r"^>\s*\[!(NOTE|TIP|WARNING|IMPORTANT)\]\s*(.*)$", replace_alerts, html, flags=re.MULTILINE)
+        html = re.sub(
+            r"^>\s*\[!(NOTE|TIP|WARNING|IMPORTANT)\]\s*(.*)$",
+            replace_alerts,
+            html,
+            flags=re.MULTILINE,
+        )
 
         # 3. Headings
         html = re.sub(r"^# (.*?)$", r"<h1>\1</h1>", html, flags=re.MULTILINE)
@@ -187,7 +200,11 @@ class DocParser:
         # 4. Bold / Italic / Code inline
         html = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", html)
         html = re.sub(r"\*(.*?)\*", r"<em>\1</em>", html)
-        html = re.sub(r"`([^`]+)`", r"<code style='background-color:#2a2d32; padding:2px 6px; border-radius:4px;'>\1</code>", html)
+        html = re.sub(
+            r"`([^`]+)`",
+            r"<code style='background-color:#2a2d32; padding:2px 6px; border-radius:4px;'>\1</code>",  # noqa: E501
+            html,
+        )
 
         # 5. Lists (unordered)
         lines = html.splitlines()
@@ -230,10 +247,14 @@ class DocParser:
 
     @classmethod
     def _wrap_theme_html(cls, body_html: str, is_rtl: bool, title: str) -> str:
-        """Wrap HTML body in a complete document with theme styling & Cairo typography for Arabic."""
+        """Wrap HTML body in a complete document with theme styling & Cairo typography for Arabic."""  # noqa: E501
         direction = "rtl" if is_rtl else "ltr"
         align = "right" if is_rtl else "left"
-        font_family = "'Cairo', 'Segoe UI', 'Microsoft YaHei', sans-serif" if is_rtl else "'Segoe UI', Roboto, sans-serif"
+        font_family = (
+            "'Cairo', 'Segoe UI', 'Microsoft YaHei', sans-serif"
+            if is_rtl
+            else "'Segoe UI', Roboto, sans-serif"
+        )
 
         return f"""<!DOCTYPE html>
 <html dir="{direction}">
@@ -251,7 +272,8 @@ class DocParser:
     text-align: {align};
     padding: 16px 24px;
   }}
-  h1 {{ color: #38bdf8; font-size: 22px; margin-bottom: 16px; border-bottom: 1px solid #334155; padding-bottom: 8px; }}
+  h1 {{ color: #38bdf8; font-size: 22px; margin-bottom: 16px;
+    border-bottom: 1px solid #334155; padding-bottom: 8px; }}
   h2 {{ color: #7dd3fc; font-size: 18px; margin-top: 20px; margin-bottom: 12px; }}
   h3 {{ color: #93c5fd; font-size: 15px; margin-top: 16px; margin-bottom: 8px; }}
   p {{ margin-bottom: 12px; }}
@@ -262,7 +284,8 @@ class DocParser:
   code {{ font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; }}
   a {{ color: #38bdf8; text-decoration: none; }}
   hr.doc-separator {{ border: 0; border-top: 1px solid #475569; margin: 22px 0; }}
-  blockquote {{ border-{align}: 3px solid #38bdf8; margin: 14px 0; padding: 8px 14px; color: #cbd5e1; }}
+  blockquote {{ border-{align}: 3px solid #38bdf8; margin: 14px 0;
+    padding: 8px 14px; color: #cbd5e1; }}
 </style>
 </head>
 <body>

@@ -5,6 +5,7 @@ They live in ``application/`` (no Qt imports; Qt is only in infrastructure).
 
 Architecture: doc-06 TextLayer — first-class editable layer.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -31,7 +32,7 @@ class AddTextLayer:
 
     label: str = "Add text layer"
 
-    def __init__(self, data_store: "ImageDataStore", text_layer: TextLayer) -> None:
+    def __init__(self, data_store: ImageDataStore, text_layer: TextLayer) -> None:
         self._store = data_store
         self._prototype = text_layer
         self._inserted_layer: TextLayer | None = None
@@ -95,7 +96,7 @@ class EditTextLayer:
 
     def __init__(
         self,
-        data_store: "ImageDataStore",
+        data_store: ImageDataStore,
         layer_id: LayerId,
         new_text_layer: TextLayer,
     ) -> None:
@@ -103,7 +104,7 @@ class EditTextLayer:
         self._layer_id = layer_id
         self._new_prototype = new_text_layer
         self._old_layer: TextLayer | None = None
-        self._old_snapshot_id: str | None = None   # snapshot of old buffer for undo
+        self._old_snapshot_id: str | None = None  # snapshot of old buffer for undo
         self._new_buffer_id: str | None = None
 
     def execute(self, session: DocumentSession) -> None:
@@ -152,10 +153,7 @@ class EditTextLayer:
             background_color=self._new_prototype.background_color,
             buffer_id=new_buffer_id,
         )
-        new_layers = tuple(
-            new_layer if la.id == self._layer_id else la
-            for la in doc.layers
-        )
+        new_layers = tuple(new_layer if la.id == self._layer_id else la for la in doc.layers)
         session.replace(doc.changed(layers=new_layers))
 
     def undo(self, session: DocumentSession) -> None:
@@ -189,8 +187,5 @@ class EditTextLayer:
             background_color=self._old_layer.background_color,
             buffer_id=restored_buf_id,
         )
-        new_layers = tuple(
-            restored if la.id == self._old_layer.id else la
-            for la in doc.layers
-        )
+        new_layers = tuple(restored if la.id == self._old_layer.id else la for la in doc.layers)
         session.replace(doc.changed(layers=new_layers))

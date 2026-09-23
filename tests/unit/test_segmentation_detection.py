@@ -27,9 +27,15 @@ def req(operation: str, **values: object) -> ProcessingRequest:
 def test_segmentation_and_detection_are_exposed_in_properties_and_toolbar() -> None:
     definitions = {item.id: item for item in processing_tool_definitions()}
     assert {
-        "watershed", "region_growing", "contour_extract", "hu_moments",
-        "connected_components", "grabcut", "active_contours",
-        "hough_circles", "hough_lines",
+        "watershed",
+        "region_growing",
+        "contour_extract",
+        "hu_moments",
+        "connected_components",
+        "grabcut",
+        "active_contours",
+        "hough_circles",
+        "hough_lines",
     } <= definitions.keys()
     groups = dict(ToolPanel._GROUPS)
     assert groups["Detection"] == ("template_match", "hough_circles", "hough_lines")

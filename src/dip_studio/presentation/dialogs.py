@@ -340,7 +340,9 @@ class ToolParametersPanel(QWidget):
                         choice,
                     )
                 widget.setCurrentText(str(definition.default))
-                widget.currentTextChanged.connect(lambda _t: self.previewRequested.emit(self.values()))
+                widget.currentTextChanged.connect(
+                    lambda _t: self.previewRequested.emit(self.values())
+                )
                 control = widget
             elif definition.kind == "boolean":
                 widget = QCheckBox()
@@ -410,6 +412,7 @@ class ToolParametersPanel(QWidget):
 
 
 # ──────────────────────────── Analysis Dialogs ───────────────────────────────
+
 
 class _HistogramWidget(QWidget):
     """QPainter-based per-channel histogram bar chart.
@@ -606,7 +609,6 @@ class ImageStatsDialog(QDialog):
         import numpy as np  # type: ignore[import-untyped]
 
         a: np.ndarray = arr  # type: ignore[assignment]
-        stat_names = ["min", "max", "mean", "std", "median"]
         stats: dict[str, dict[str, float]] = {}
 
         if a.ndim == 2:
@@ -646,9 +648,9 @@ class ExportDialog(QDialog):
             self._format.addItem(icon_for("file.new"), format_name)
         self._format.currentTextChanged.connect(self._on_format_change)
 
-        self._quality_label_widget = __import__(
-            "PySide6.QtWidgets", fromlist=["QLabel"]
-        ).QLabel("Quality (JPEG):")
+        self._quality_label_widget = __import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel(
+            "Quality (JPEG):"
+        )
         self._quality = QSpinBox()
         self._quality.setRange(1, 100)
         self._quality.setValue(85)

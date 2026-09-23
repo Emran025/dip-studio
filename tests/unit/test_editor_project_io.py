@@ -3,9 +3,11 @@ import zipfile
 from pathlib import Path
 from uuid import uuid4
 
+import numpy as np
 import pytest
 
 from dip_studio.application.editor import EditorController
+from dip_studio.core.errors import PersistenceError
 from dip_studio.domain.model import (
     DocumentId,
     GroupLayer,
@@ -17,18 +19,16 @@ from dip_studio.domain.model import (
     ShapeLayer,
     TextLayer,
 )
-from dip_studio.core.errors import PersistenceError
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.infrastructure.project_store import JsonProjectStore
 from dip_studio.infrastructure.zip_project_store import ZipProjectStore
 from dip_studio.rendering.ports import BlankDocumentRenderer
-import numpy as np
 
 
 def test_editor_controller_saves_and_opens_project(tmp_path: Path) -> None:
     path = tmp_path / "sample.dip"
     controller = EditorController(BlankDocumentRenderer(), JsonProjectStore())
-    created = controller.create_document("sample", 20, 10)
+    controller.create_document("sample", 20, 10)
 
     saved = controller.save_project(path)
 
@@ -91,22 +91,26 @@ def test_recovery_discovery_cleanup_and_restore(tmp_path: Path) -> None:
 
     discovered = [
         path.name
-        for path in __import__("dip_studio.infrastructure.autosave", fromlist=["discover_recovery_files"]).discover_recovery_files(
-            "project-alpha", recovery_dir=recovery_dir
-        )
+        for path in __import__(
+            "dip_studio.infrastructure.autosave", fromlist=["discover_recovery_files"]
+        ).discover_recovery_files("project-alpha", recovery_dir=recovery_dir)
     ]
     assert valid_path.name in discovered
     assert invalid_path.name in discovered
     assert temp_path.name not in discovered
 
-    restored = __import__("dip_studio.infrastructure.autosave", fromlist=["find_latest_recovery_file"]).find_latest_recovery_file(
+    restored = __import__(
+        "dip_studio.infrastructure.autosave", fromlist=["find_latest_recovery_file"]
+    ).find_latest_recovery_file(
         document_name="project-alpha",
         recovery_dir=recovery_dir,
         project_store=project_store,
     )
     assert restored == valid_path
 
-    kept = __import__("dip_studio.infrastructure.autosave", fromlist=["cleanup_recovery_files"]).cleanup_recovery_files(
+    kept = __import__(
+        "dip_studio.infrastructure.autosave", fromlist=["cleanup_recovery_files"]
+    ).cleanup_recovery_files(
         document_name="project-alpha",
         recovery_dir=recovery_dir,
         max_generations=1,
@@ -193,9 +197,7 @@ def test_zip_store_round_trips_masks_selections_and_metadata(tmp_path: Path) -> 
         id=DocumentId(uuid4()),
         name="selection-project",
         image=ImageSpec(5, 4),
-        layers=(
-            ShapeLayer(id=LayerId(uuid4()), name="Layer", buffer_id=pixels),
-        ),
+        layers=(ShapeLayer(id=LayerId(uuid4()), name="Layer", buffer_id=pixels),),
         masks=(
             Mask(
                 id="mask-1",
@@ -218,9 +220,7 @@ def test_zip_store_round_trips_masks_selections_and_metadata(tmp_path: Path) -> 
         metadata=(("author", "DIP Studio"),),
         workspace_metadata=(("panel", "layers"),),
         buffer_metadata=((pixels, {"color_space": "sRGB"}),),
-        cv_objects=(
-            {"object_id": "obj-1", "class": "cat", "confidence": 0.9},
-        ),
+        cv_objects=({"object_id": "obj-1", "class": "cat", "confidence": 0.9},),
     )
     path = tmp_path / "selection-project.dip"
 
@@ -254,20 +254,29 @@ def test_zip_store_rejects_out_of_range_archive_size(tmp_path: Path) -> None:
         with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(
                 "metadata.json",
-                json.dumps({
-                    "format_version": 2,
-                    "document": {
-                        "id": str(uuid4()),
-                        "name": "test",
-                        "revision": 0,
-                        "image": {"width": 1, "height": 1, "channels": 4, "bit_depth": 8, "color_space": "sRGB", "has_alpha": True},
-                        "layers": [],
-                        "operations": [],
-                        "masks": [],
-                        "selections": [],
-                        "metadata": {},
-                    },
-                }),
+                json.dumps(
+                    {
+                        "format_version": 2,
+                        "document": {
+                            "id": str(uuid4()),
+                            "name": "test",
+                            "revision": 0,
+                            "image": {
+                                "width": 1,
+                                "height": 1,
+                                "channels": 4,
+                                "bit_depth": 8,
+                                "color_space": "sRGB",
+                                "has_alpha": True,
+                            },
+                            "layers": [],
+                            "operations": [],
+                            "masks": [],
+                            "selections": [],
+                            "metadata": {},
+                        },
+                    }
+                ),
             )
             zf.writestr("buffers/large.npy", b"x" * 32)
         with pytest.raises(PersistenceError, match="too many members"):
@@ -278,28 +287,39 @@ def test_zip_store_rejects_out_of_range_archive_size(tmp_path: Path) -> None:
 
 def test_zip_store_rejects_manifest_checksum_mismatch(tmp_path: Path) -> None:
     path = tmp_path / "checksum.dip"
-    metadata = json.dumps({
-        "format_version": 2,
-        "document": {
-            "id": str(uuid4()),
-            "name": "checksum-test",
-            "revision": 0,
-            "image": {"width": 1, "height": 1, "channels": 4, "bit_depth": 8, "color_space": "sRGB", "has_alpha": True},
-            "layers": [],
-            "operations": [],
-            "masks": [],
-            "selections": [],
-            "metadata": {},
-        },
-    }).encode("utf-8")
+    metadata = json.dumps(
+        {
+            "format_version": 2,
+            "document": {
+                "id": str(uuid4()),
+                "name": "checksum-test",
+                "revision": 0,
+                "image": {
+                    "width": 1,
+                    "height": 1,
+                    "channels": 4,
+                    "bit_depth": 8,
+                    "color_space": "sRGB",
+                    "has_alpha": True,
+                },
+                "layers": [],
+                "operations": [],
+                "masks": [],
+                "selections": [],
+                "metadata": {},
+            },
+        }
+    ).encode("utf-8")
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("metadata.json", metadata)
         zf.writestr(
             "checksum.manifest.json",
-            json.dumps({
-                "format_version": 2,
-                "sha256": "deadbeef",
-            }),
+            json.dumps(
+                {
+                    "format_version": 2,
+                    "sha256": "deadbeef",
+                }
+            ),
         )
 
     with pytest.raises(PersistenceError, match="checksum"):

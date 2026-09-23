@@ -1,4 +1,5 @@
 """Undo/redo history for a single document session with jumping support."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

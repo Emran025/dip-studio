@@ -1,8 +1,11 @@
 """Tests for new domain entities: Mask, SelectionRect, Transform."""
-import pytest
-from dip_studio.domain.model import Mask, SelectionRect, Transform, Layer, LayerId
-from dip_studio.core.errors import ValidationError
+
 from uuid import uuid4
+
+import pytest
+
+from dip_studio.core.errors import ValidationError
+from dip_studio.domain.model import Layer, LayerId, Mask, SelectionRect, Transform
 
 
 class TestMask:

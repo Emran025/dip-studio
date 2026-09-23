@@ -1,4 +1,5 @@
 """Image export adapters: save flattened composite to PNG/JPEG/BMP/TIFF/PPM."""
+
 from __future__ import annotations
 
 import io
@@ -52,8 +53,7 @@ class ImageExporter:
                 self._write_ppm(arr, path)
                 return
             raise PersistenceError(
-                f"Pillow is required to export '{ext}'. "
-                "Install it with: conda install pillow"
+                f"Pillow is required to export '{ext}'. Install it with: conda install pillow"
             )
 
         self._write_pillow(arr, path, ext, quality)

@@ -1,4 +1,5 @@
-"""Unit tests for layer advancements: layer from selection, crop document, blend modes, lock, merge down, and duplication with CoW."""
+"""Unit tests for layer advancements: layer from selection, crop document, blend modes, lock, merge down, and duplication with CoW."""  # noqa: E501
+
 from __future__ import annotations
 
 import numpy as np
@@ -25,6 +26,7 @@ def _setup_controller() -> tuple[EditorController, ImageDataStore]:
     controller.set_layer_visibility(layer_id, True)
     # Directly set buffer on layer
     from dip_studio.application.layer_commands import ChangeLayer
+
     controller._history_for_active().execute(
         ChangeLayer(layer_id, buffer_id=buf_id), controller._session
     )
@@ -139,7 +141,7 @@ class TestLayerFromSelection:
         assert len(new_doc.layers) == 2
 
         # Source layer has the region cleared to 0
-        src_layer = next(l for l in new_doc.layers if l.id == src_id)
+        src_layer = next(layer for layer in new_doc.layers if layer.id == src_id)
         assert src_layer.buffer_id is not None
         src_arr = store.get(src_layer.buffer_id)
         assert (src_arr[2:7, 2:7] == 0).all()
@@ -175,6 +177,7 @@ class TestLayerMergeDown:
         green_arr[:, :, 3] = 255  # opaque
         buf_green = store.allocate(green_arr)
         from dip_studio.application.layer_commands import ChangeLayer
+
         controller._history_for_active().execute(
             ChangeLayer(top_id, buffer_id=buf_green, opacity=0.5), controller._session
         )

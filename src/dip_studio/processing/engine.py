@@ -1,7 +1,8 @@
 """Processing orchestration with no UI or image-library knowledge."""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from dip_studio.core.cancellation import CancellationToken, ProgressReporter
 from dip_studio.processing.contracts import (
@@ -12,13 +13,13 @@ from dip_studio.processing.contracts import (
 
 if TYPE_CHECKING:
     from dip_studio.infrastructure.data_store import ImageDataStore
-    from dip_studio.infrastructure.processing_cache import CacheKey, ProcessingCache
+    from dip_studio.infrastructure.processing_cache import ProcessingCache
 
 InputT = TypeVar("InputT")
 OutputT = TypeVar("OutputT")
 
 
-class ProcessingEngine(Generic[InputT, OutputT]):
+class ProcessingEngine[InputT, OutputT]:
     """Orchestrates processor dispatch with optional LRU result caching.
 
     Parameters
@@ -37,8 +38,8 @@ class ProcessingEngine(Generic[InputT, OutputT]):
     def __init__(
         self,
         processors: dict[str, Processor[InputT, OutputT]],
-        cache: "ProcessingCache | None" = None,
-        data_store: "ImageDataStore | None" = None,
+        cache: ProcessingCache | None = None,
+        data_store: ImageDataStore | None = None,
     ) -> None:
         self._processors = dict(processors)
         self._cache = cache
@@ -112,8 +113,7 @@ class ProcessingEngine(Generic[InputT, OutputT]):
             )
             selection_ver = (
                 self._data_store.version(context.selection)
-                if context.selection is not None
-                and self._data_store.has(context.selection)
+                if context.selection is not None and self._data_store.has(context.selection)
                 else None
             )
             key = CacheKey.build(
@@ -121,9 +121,7 @@ class ProcessingEngine(Generic[InputT, OutputT]):
                 buf_ver,
                 request.operation,
                 request.parameters,
-                operation_version=str(
-                    getattr(active_processor, "version", "1")
-                ),
+                operation_version=str(getattr(active_processor, "version", "1")),
                 mask_id=context.mask,
                 mask_version=mask_ver,
                 selection_id=context.selection,

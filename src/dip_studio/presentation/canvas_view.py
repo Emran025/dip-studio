@@ -1,9 +1,11 @@
 """Interactive canvas preview widget for the editor presentation layer."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import (
     QColor,
@@ -53,7 +55,14 @@ class CanvasView(QWidget):
         self._tool_callback: Callable[[str, QMouseEvent], None] | None = None
 
     def set_active_layer_rect(
-        self, x: int, y: int, width: int, height: int, name: str = "", doc_w: int = 1, doc_h: int = 1
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        name: str = "",
+        doc_w: int = 1,
+        doc_h: int = 1,
     ) -> None:
         """Set the active layer's document-space bounding box for on-canvas highlighting."""
         self._active_layer_rect = (x, y, width, height, doc_w, doc_h)
@@ -74,12 +83,8 @@ class CanvasView(QWidget):
         doc_w: int,
         doc_h: int,
     ) -> None:
-        self._active_layer_rects = tuple(
-            (*rect, doc_w, doc_h) for rect in rects
-        )
-        self._active_layer_rect = (
-            self._active_layer_rects[0] if self._active_layer_rects else None
-        )
+        self._active_layer_rects = tuple((*rect, doc_w, doc_h) for rect in rects)
+        self._active_layer_rect = self._active_layer_rects[0] if self._active_layer_rects else None
         self.update()
 
     def active_layer_handle_at(self, pos: QPoint) -> str | None:
@@ -138,9 +143,7 @@ class CanvasView(QWidget):
             self._selection_points = ()
         self.update()
 
-    def set_selection_points(
-        self, points: tuple[QPoint, ...], kind: str = "lasso"
-    ) -> None:
+    def set_selection_points(self, points: tuple[QPoint, ...], kind: str = "lasso") -> None:
         """Show a freehand or polygon selection path while it is being drawn."""
         self._selection_points = points
         self._selection_kind = kind
@@ -203,11 +206,7 @@ class CanvasView(QWidget):
     ) -> tuple[int, int, int, int] | None:
         """Return image-space (x, y, w, h) for current selection rect, if active."""
         image_rect = self._image_display_rect()
-        if (
-            image_rect is None
-            or self._selection_rect is None
-            or self._selection_rect.isNull()
-        ):
+        if image_rect is None or self._selection_rect is None or self._selection_rect.isNull():
             return None
         rect = self._selection_rect.normalized().intersected(image_rect)
         scale_x = img_w / max(1, image_rect.width())
@@ -347,9 +346,7 @@ class CanvasView(QWidget):
         self.cropRectChanged.emit(self._selection_rect)
         self.update()
 
-    def set_active_tool_callback(
-        self, callback: Callable[[str, QMouseEvent], None] | None
-    ) -> None:
+    def set_active_tool_callback(self, callback: Callable[[str, QMouseEvent], None] | None) -> None:
         """Register a callback for tool-specific mouse events.
 
         The callback receives (event_type: str, event: QMouseEvent) where
@@ -401,7 +398,7 @@ class CanvasView(QWidget):
         self._source_image = image
         self._render_zoomed()
 
-    def set_preview_array(self, arr: "np.ndarray") -> None:
+    def set_preview_array(self, arr: np.ndarray) -> None:
         """Update the canvas from an RGBA uint8 NumPy array without encoding.
 
         The input is normalized to a contiguous ``(H, W, 4)`` ``uint8`` array
@@ -424,7 +421,7 @@ class CanvasView(QWidget):
             alpha = np.full((*arr.shape[:2], 1), 255, dtype=np.uint8)
             arr = np.concatenate([arr, alpha], axis=-1)
         elif arr.shape[-1] != 4:
-            raise ValueError("Preview array must have 3 or 4 channels; got shape %s" % (arr.shape,))
+            raise ValueError(f"Preview array must have 3 or 4 channels; got shape {arr.shape}")
 
         if arr.dtype != np.uint8:
             arr = arr.astype(np.uint8, copy=False)
@@ -473,7 +470,9 @@ class CanvasView(QWidget):
             handle = self._hit_crop_handle(pos)
             self._crop_handle = handle or "new"
             self._crop_drag_origin = pos
-            self._crop_rect_start = QRect(self._selection_rect) if self._selection_rect else QRect(pos, pos)
+            self._crop_rect_start = (
+                QRect(self._selection_rect) if self._selection_rect else QRect(pos, pos)
+            )
             if self._crop_handle == "new":
                 self._selection_rect = QRect(pos, pos)
                 self.update()
@@ -686,13 +685,45 @@ class CanvasView(QWidget):
                     # 1. Darkened Photoshop Shield outside crop box
                     shield_color = QColor(0, 0, 0, 160)
                     if c_rect.top() > img_rect.top():
-                        painter.fillRect(QRect(img_rect.left(), img_rect.top(), img_rect.width(), c_rect.top() - img_rect.top()), shield_color)
+                        painter.fillRect(
+                            QRect(
+                                img_rect.left(),
+                                img_rect.top(),
+                                img_rect.width(),
+                                c_rect.top() - img_rect.top(),
+                            ),
+                            shield_color,
+                        )
                     if c_rect.bottom() < img_rect.bottom():
-                        painter.fillRect(QRect(img_rect.left(), c_rect.bottom() + 1, img_rect.width(), img_rect.bottom() - c_rect.bottom()), shield_color)
+                        painter.fillRect(
+                            QRect(
+                                img_rect.left(),
+                                c_rect.bottom() + 1,
+                                img_rect.width(),
+                                img_rect.bottom() - c_rect.bottom(),
+                            ),
+                            shield_color,
+                        )
                     if c_rect.left() > img_rect.left():
-                        painter.fillRect(QRect(img_rect.left(), c_rect.top(), c_rect.left() - img_rect.left(), c_rect.height()), shield_color)
+                        painter.fillRect(
+                            QRect(
+                                img_rect.left(),
+                                c_rect.top(),
+                                c_rect.left() - img_rect.left(),
+                                c_rect.height(),
+                            ),
+                            shield_color,
+                        )
                     if c_rect.right() < img_rect.right():
-                        painter.fillRect(QRect(c_rect.right() + 1, c_rect.top(), img_rect.right() - c_rect.right(), c_rect.height()), shield_color)
+                        painter.fillRect(
+                            QRect(
+                                c_rect.right() + 1,
+                                c_rect.top(),
+                                img_rect.right() - c_rect.right(),
+                                c_rect.height(),
+                            ),
+                            shield_color,
+                        )
 
                     # 2. Rule of thirds grid lines
                     grid_pen = QPen(QColor(255, 255, 255, 90), 1, Qt.PenStyle.DashLine)
@@ -712,7 +743,12 @@ class CanvasView(QWidget):
                     painter.drawRect(c_rect)
 
                     # 4. Photoshop handles (thick corner Ls & edge marks)
-                    h_pen = QPen(QColor(255, 255, 255, 255), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap)
+                    h_pen = QPen(
+                        QColor(255, 255, 255, 255),
+                        3,
+                        Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.SquareCap,
+                    )
                     painter.setPen(h_pen)
                     hl = 14
                     cl = max(0, c_rect.left())
@@ -759,10 +795,7 @@ class CanvasView(QWidget):
                 else:
                     painter.drawRect(self._selection_rect)
 
-        if (
-            self._active_layer_rects
-            and not self._is_crop_mode
-        ):
+        if self._active_layer_rects and not self._is_crop_mode:
             border_pen = QPen(QColor(0, 122, 255, 230), 1.5, Qt.PenStyle.SolidLine)
             painter.setPen(border_pen)
             painter.setBrush(QColor(0, 122, 255, 20))
@@ -804,9 +837,7 @@ class CanvasView(QWidget):
             painter.setPen(h_pen)
             painter.setBrush(h_brush)
             for pt in h_positions:
-                painter.drawRect(
-                    QRect(pt.x() - h_half, pt.y() - h_half, handle_size, handle_size)
-                )
+                painter.drawRect(QRect(pt.x() - h_half, pt.y() - h_half, handle_size, handle_size))
 
             if self._active_layer_name:
                 badge_text = f" {self._active_layer_name} "

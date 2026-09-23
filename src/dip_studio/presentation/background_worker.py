@@ -17,25 +17,27 @@ Usage::
         on_error=lambda exc: show_error(str(exc)),
     )
 """
+
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 
 from dip_studio.core.cancellation import MutableCancellationToken, ProgressReporter
 
-
 # ---------------------------------------------------------------------------
 # Internal QRunnable task
 # ---------------------------------------------------------------------------
 
+
 class _TaskSignals(QObject):
     """Signals emitted by a background task (must live on a QObject)."""
 
-    done = Signal(object)      # emits result
+    done = Signal(object)  # emits result
     error = Signal(Exception)  # emits exception
-    progress = Signal(int)     # emits 0-100 progress percentage
+    progress = Signal(int)  # emits 0-100 progress percentage
     finished = Signal(object)  # emits the token for lifecycle cleanup
 
 
@@ -79,6 +81,7 @@ class _BackgroundTask(QRunnable):
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 class BackgroundWorker(QObject):
     """Submit callables to a shared QThreadPool; results arrive on the UI thread.

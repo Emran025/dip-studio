@@ -3,11 +3,11 @@
 The DataStore owns the raw NumPy pixel data; Layer objects only carry
 a buffer_id reference, keeping the domain layer free of NumPy.
 """
+
 from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Iterator
 from typing import Any
 from uuid import uuid4
 
@@ -36,7 +36,7 @@ class ImageDataStore:
 
         self._buffers: dict[str, np.ndarray] = {}
         self._metadata: dict[str, dict[str, Any]] = {}
-        self._version: dict[str, int] = {}   # per-buffer mutation counter
+        self._version: dict[str, int] = {}  # per-buffer mutation counter
         self._lock = threading.Lock()
         self.max_bytes: int | None = max_bytes
         self.max_items: int | None = max_items
@@ -199,13 +199,11 @@ class ImageDataStore:
         upper_arr = _to_rgba(self.get(upper_buffer_id)).copy()
         lower_arr = _to_rgba(self.get(lower_buffer_id))
         if upper_arr.shape[:2] != lower_arr.shape[:2]:
-            upper_arr = _fit_array_to_document(
-                upper_arr, lower_arr.shape[1], lower_arr.shape[0]
-            )
+            upper_arr = _fit_array_to_document(upper_arr, lower_arr.shape[1], lower_arr.shape[0])
         if upper_opacity < 1.0:
-            upper_arr[:, :, 3] = (
-                upper_arr[:, :, 3].astype(np.float32) * upper_opacity
-            ).astype(np.uint8)
+            upper_arr[:, :, 3] = (upper_arr[:, :, 3].astype(np.float32) * upper_opacity).astype(
+                np.uint8
+            )
         merged_arr = (
             _alpha_composite(lower_arr, upper_arr, blend_mode=upper_blend_mode)
             .clip(0, 255)

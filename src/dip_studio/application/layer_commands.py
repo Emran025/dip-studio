@@ -1,4 +1,5 @@
 """Undoable layer state transitions."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -6,12 +7,12 @@ from uuid import uuid4
 from dip_studio.application.commands import Command
 from dip_studio.application.session import DocumentSession
 from dip_studio.domain.model import (
+    _UNSET,
     GroupLayer,
     ImageDocument,
     Layer,
     LayerId,
     Transform,
-    _UNSET,
 )
 
 
@@ -41,7 +42,11 @@ class ChangeLayer(Command):
     def execute(self, session: DocumentSession) -> None:
         document = session.document
         index = next(
-            (position for position, layer in enumerate(document.layers) if layer.id == self._layer_id),
+            (
+                position
+                for position, layer in enumerate(document.layers)
+                if layer.id == self._layer_id
+            ),
             None,
         )
         if index is None:
@@ -77,7 +82,11 @@ class TranslateLayer(Command):
     def execute(self, session: DocumentSession) -> None:
         document = session.document
         index = next(
-            (position for position, layer in enumerate(document.layers) if layer.id == self._layer_id),
+            (
+                position
+                for position, layer in enumerate(document.layers)
+                if layer.id == self._layer_id
+            ),
             None,
         )
         if index is None:
@@ -182,7 +191,9 @@ class RenameLayer(Command):
 
     def execute(self, session: DocumentSession) -> None:
         document = session.document
-        index = next((i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None)
+        index = next(
+            (i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None
+        )
         if index is None:
             raise KeyError("Layer does not exist")
         layer = document.layers[index]
@@ -267,7 +278,9 @@ class RemoveLayer(Command):
 
     def execute(self, session: DocumentSession) -> None:
         document = session.document
-        index = next((i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None)
+        index = next(
+            (i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None
+        )
         if index is None:
             raise KeyError("Layer does not exist")
         if len(document.layers) == 1:
@@ -291,7 +304,9 @@ class RemoveLayers(Command):
 
     def execute(self, session: DocumentSession) -> None:
         document = session.document
-        if not self._layer_ids or not set(self._layer_ids).issubset({layer.id for layer in document.layers}):
+        if not self._layer_ids or not set(self._layer_ids).issubset(
+            {layer.id for layer in document.layers}
+        ):
             raise KeyError("Layer does not exist")
         if len(document.layers) - len(self._layer_ids) < 1:
             raise ValueError("The document must contain at least one layer")
@@ -315,7 +330,9 @@ class MoveLayer(Command):
 
     def execute(self, session: DocumentSession) -> None:
         document = session.document
-        index = next((i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None)
+        index = next(
+            (i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None
+        )
         if index is None:
             raise KeyError("Layer does not exist")
         target = index + self._delta
@@ -360,7 +377,9 @@ class SetLayerBlendMode(Command):
 
     def execute(self, session: DocumentSession) -> None:
         document = session.document
-        index = next((i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None)
+        index = next(
+            (i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None
+        )
         if index is None:
             raise KeyError("Layer does not exist")
         layer = document.layers[index]
@@ -388,7 +407,9 @@ class SetLayerLocked(Command):
 
     def execute(self, session: DocumentSession) -> None:
         document = session.document
-        index = next((i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None)
+        index = next(
+            (i for i, layer in enumerate(document.layers) if layer.id == self._layer_id), None
+        )
         if index is None:
             raise KeyError("Layer does not exist")
         layer = document.layers[index]
@@ -483,16 +504,20 @@ class MergeDown(Command):
 
     def execute(self, session: DocumentSession) -> None:
         document = session.document
-        idx_upper = next((i for i, l in enumerate(document.layers) if l.id == self._upper_id), None)
-        idx_lower = next((i for i, l in enumerate(document.layers) if l.id == self._lower_id), None)
+        idx_upper = next(
+            (i for i, layer in enumerate(document.layers) if layer.id == self._upper_id), None
+        )
+        idx_lower = next(
+            (i for i, layer in enumerate(document.layers) if layer.id == self._lower_id), None
+        )
         if idx_upper is None or idx_lower is None:
             raise KeyError("Layers do not exist")
         lower_layer = document.layers[idx_lower]
         merged_layer = lower_layer.changed(buffer_id=self._merged_buffer_id)
         layers = tuple(
-            merged_layer if l.id == self._lower_id else l
-            for l in document.layers
-            if l.id != self._upper_id
+            merged_layer if layer.id == self._lower_id else layer
+            for layer in document.layers
+            if layer.id != self._upper_id
         )
         self._previous = document
         session.replace(document.changed(layers=layers))

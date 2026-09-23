@@ -1,4 +1,5 @@
 """Preview result cache with version-aware invalidation."""
+
 from __future__ import annotations
 
 import hashlib
@@ -30,7 +31,7 @@ class PreviewKey:
         *,
         preview_mode: bool = False,
         document_id: str | None = None,
-    ) -> "PreviewKey":
+    ) -> PreviewKey:
         params = {
             "buffer_id": buffer_id,
             "buffer_version": buffer_version,
@@ -40,7 +41,7 @@ class PreviewKey:
             "preview_mode": bool(preview_mode),
             "document_id": document_id,
         }
-        digest = hashlib.sha256(
+        hashlib.sha256(
             json.dumps(params, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:16]
         return PreviewKey(

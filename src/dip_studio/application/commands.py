@@ -1,4 +1,5 @@
 """Command boundary shared by menu, keyboard, toolbar, and automation."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -64,7 +65,7 @@ class ApplyProcessing:
 
     def __init__(
         self,
-        processing: "ProcessingEngine",  # type: ignore[type-arg]
+        processing: ProcessingEngine,  # type: ignore[type-arg]
         request: ProcessingRequest,
         layer_id: LayerId | None = None,
     ) -> None:
@@ -110,14 +111,11 @@ class ApplyProcessing:
         # Use CoW .changed() to preserve ALL layer properties:
         # mask_id, blend_mode, transform, locked, opacity, visible.
         new_layer = layer.changed(buffer_id=new_buffer_id)
-        new_layers = tuple(
-            new_layer if la.id == layer.id else la
-            for la in document.layers
-        )
+        new_layers = tuple(new_layer if la.id == layer.id else la for la in document.layers)
         new_doc = document.changed(
             layers=new_layers,
             operations=document.operations
-            + (AppliedOperation(self._request.operation, self._request.parameters),)
+            + (AppliedOperation(self._request.operation, self._request.parameters),),
         )
         session.replace(new_doc)
 

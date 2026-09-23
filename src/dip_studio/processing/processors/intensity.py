@@ -2,6 +2,7 @@
 
 NumPy educational implementations as per doc 07-dip-processing-engine-and-library-stack.md.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,6 +13,7 @@ from dip_studio.processing.processors._base import BaseProcessor, _param
 
 class NegativeProcessor(BaseProcessor):
     """Photographic negative: I_out = 255 - I_in."""
+
     operation = "negative"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
@@ -20,6 +22,7 @@ class NegativeProcessor(BaseProcessor):
 
 class GammaProcessor(BaseProcessor):
     """Power-law (gamma) transformation: I_out = (I_in/255)^gamma * 255."""
+
     operation = "gamma"
 
     def validate(self, request: ProcessingRequest) -> None:
@@ -40,6 +43,7 @@ class GammaProcessor(BaseProcessor):
 
 class LogTransformProcessor(BaseProcessor):
     """Logarithmic transform: I_out = c * log(1 + I_in)."""
+
     operation = "log_transform"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
@@ -54,13 +58,14 @@ class LogTransformProcessor(BaseProcessor):
 
 class BrightnessContrastProcessor(BaseProcessor):
     """Linear adjustment: I_out = alpha * I_in + beta.
-    
+
     alpha: contrast (default 1.0), beta: brightness offset (default 0).
     """
+
     operation = "brightness_contrast"
 
     def _apply(self, arr: np.ndarray, request: ProcessingRequest) -> np.ndarray:
-        alpha = float(_param(request, "alpha", "1.0"))   # contrast
-        beta = float(_param(request, "beta", "0"))        # brightness
+        alpha = float(_param(request, "alpha", "1.0"))  # contrast
+        beta = float(_param(request, "beta", "0"))  # brightness
         result = arr.astype(np.float32) * alpha + beta
         return result.clip(0, 255).astype(np.uint8)

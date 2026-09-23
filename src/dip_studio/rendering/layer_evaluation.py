@@ -1,4 +1,5 @@
 """Evaluation helpers for document stacks, group containers and adjustment layers."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -40,7 +41,9 @@ def _apply_adjustment_layer(array: np.ndarray, layer: AdjustmentLayer | FilterLa
         raise RenderingError(f"Adjustment layer '{layer.name}' cannot operate on non-RGBA data")
 
     if operation == "grayscale":
-        gray = (0.299 * rgba[:, :, 0] + 0.587 * rgba[:, :, 1] + 0.114 * rgba[:, :, 2]).astype(np.uint8)
+        gray = (0.299 * rgba[:, :, 0] + 0.587 * rgba[:, :, 1] + 0.114 * rgba[:, :, 2]).astype(
+            np.uint8
+        )
         result = np.stack([gray, gray, gray], axis=-1)
         return np.concatenate([result, rgba[:, :, 3:4]], axis=-1)
 
@@ -69,7 +72,7 @@ def _apply_adjustment_layer(array: np.ndarray, layer: AdjustmentLayer | FilterLa
         sat_scale = float(_find_param(params, "saturation_scale", "1.0"))
         lightness_offset = float(_find_param(params, "lightness_offset", "0"))
         rgb = rgba[:, :, :3].astype(np.float32)
-        gray = (0.299 * rgb[:, :, 0] + 0.587 * rgb[:, :, 1] + 0.114 * rgb[:, :, 2])
+        gray = 0.299 * rgb[:, :, 0] + 0.587 * rgb[:, :, 1] + 0.114 * rgb[:, :, 2]
         gray3 = np.stack([gray, gray, gray], axis=-1)
         adjusted = np.clip((rgb - gray3) * sat_scale + gray3 + lightness_offset, 0, 255)
         result = adjusted.astype(np.uint8)
@@ -88,7 +91,7 @@ class LayerEvaluationService:
 
     def evaluate(
         self,
-        layers: Iterable["Layer"],
+        layers: Iterable[Layer],
         *,
         buffer_reader: Callable[[str], np.ndarray] | None = None,
         active: set[object] | None = None,
@@ -118,15 +121,21 @@ class LayerEvaluationService:
                     if result is None:
                         result = child_result
                     else:
-                        result = _compose(result, child_result, getattr(layer, "blend_mode", "normal") or "normal")
+                        result = _compose(
+                            result, child_result, getattr(layer, "blend_mode", "normal") or "normal"
+                        )
                     continue
                 if getattr(layer, "opacity", 1.0) < 1.0:
                     child_result = child_result.copy()
-                    child_result[:, :, 3] = (child_result[:, :, 3] * float(layer.opacity)).astype(np.uint8)
+                    child_result[:, :, 3] = (child_result[:, :, 3] * float(layer.opacity)).astype(
+                        np.uint8
+                    )
                 if result is None:
                     result = child_result
                 else:
-                    result = _compose(result, child_result, getattr(layer, "blend_mode", "normal") or "normal")
+                    result = _compose(
+                        result, child_result, getattr(layer, "blend_mode", "normal") or "normal"
+                    )
                 continue
             if isinstance(layer, (AdjustmentLayer, FilterLayer)):
                 if result is not None:

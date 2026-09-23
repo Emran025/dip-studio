@@ -3,12 +3,10 @@
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
-import pytest
 
 from dip_studio.application.editor import EditorController
-from dip_studio.domain.model import Layer, LayerId, SelectionRect, ShapeLayer
+from dip_studio.domain.model import SelectionRect, ShapeLayer
 from dip_studio.infrastructure.data_store import ImageDataStore
-from dip_studio.infrastructure.shape_commands import DrawShape
 from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.rendering.ports import BlankDocumentRenderer
 
@@ -57,7 +55,7 @@ def test_canvas_compute_constrained_rect_shift_and_alt() -> None:
 
 def test_editor_selection_and_shape_tools() -> None:
     controller = EditorController(BlankDocumentRenderer(), data_store=ImageDataStore())
-    doc = controller.create_document("TestDoc", 400, 300)
+    controller.create_document("TestDoc", 400, 300)
     controller.add_layer("Layer 1")
 
     # Make selection
@@ -105,7 +103,7 @@ def test_editor_selection_and_shape_tools() -> None:
 
 def test_line_shape_uses_line_preview_and_accepts_axis_aligned_drag() -> None:
     controller = EditorController(BlankDocumentRenderer(), data_store=ImageDataStore())
-    document = controller.create_document("Line", 100, 100)
+    controller.create_document("Line", 100, 100)
     controller.add_layer("Layer 1")
 
     result = controller.draw_shape("Line", (10, 20, 70, 1))

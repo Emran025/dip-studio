@@ -1,9 +1,10 @@
+from uuid import uuid4
+
 from dip_studio.application.editor import EditorController
 from dip_studio.application.layer_commands import ChangeLayer
 from dip_studio.application.session import DocumentSession
 from dip_studio.domain.model import Layer, LayerId
 from dip_studio.rendering.ports import BlankDocumentRenderer
-from uuid import uuid4
 
 
 def test_layer_visibility_and_opacity_are_undoable() -> None:
@@ -107,7 +108,11 @@ def test_structure_operations_preserve_layer_identity() -> None:
     overlay_id = document.layers[1].id
 
     duplicated = controller.duplicate_layer(overlay_id)
-    duplicate_id = next(layer.id for layer in duplicated.layers if layer.id != overlay_id and layer.name == "Overlay copy")
+    duplicate_id = next(
+        layer.id
+        for layer in duplicated.layers
+        if layer.id != overlay_id and layer.name == "Overlay copy"
+    )
     moved = controller.move_layer(overlay_id, -1)
 
     assert moved.layers[0].id == overlay_id

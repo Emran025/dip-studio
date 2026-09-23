@@ -23,13 +23,14 @@ Example plugin module (third-party or built-in extension):
 
     PLUGIN = MyPlugin()
 """
+
 from __future__ import annotations
 
 import importlib
 import importlib.util
 import logging
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from dip_studio.processing.contracts import Processor
@@ -79,8 +80,7 @@ class PluginRegistry:
                     plugin_id=getattr(plugin, "plugin_id", "<unknown>"),
                     stage="registration",
                     message=(
-                        f"Plugin targets API v{plugin.api_version}; "
-                        f"host supports v{API_VERSION}"
+                        f"Plugin targets API v{plugin.api_version}; host supports v{API_VERSION}"
                     ),
                 )
             )
@@ -141,7 +141,9 @@ class PluginRegistry:
         for processor in processors:
             try:
                 processing_engine.register(processor)  # type: ignore[union-attr]
-                _log.debug("Registered processor '%s' from '%s'", processor.operation, plugin.plugin_id)
+                _log.debug(
+                    "Registered processor '%s' from '%s'", processor.operation, plugin.plugin_id
+                )
             except Exception as exc:
                 failures.append(
                     PluginActivationFailure(plugin.plugin_id, "processor_registration", str(exc))
@@ -227,7 +229,9 @@ class PluginLoader:
             self._registry.record_failure(
                 source, "plugin_discovery", "PLUGIN does not satisfy ProcessorPlugin"
             )
-            _log.warning("'%s' in %s does not satisfy ProcessorPlugin protocol", self.PLUGIN_ATTR, source)
+            _log.warning(
+                "'%s' in %s does not satisfy ProcessorPlugin protocol", self.PLUGIN_ATTR, source
+            )
             return False
         self._registry.register(plugin)
         return True

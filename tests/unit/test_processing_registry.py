@@ -1,4 +1,5 @@
 """Tests for processing registry — build_processing_engine wiring."""
+
 from __future__ import annotations
 
 import numpy as np

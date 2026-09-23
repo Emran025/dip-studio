@@ -1,4 +1,5 @@
 """Analysis and segmentation processors: Threshold, Segmentation."""
+
 from __future__ import annotations
 
 import numpy as np

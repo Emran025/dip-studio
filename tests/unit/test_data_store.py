@@ -1,4 +1,5 @@
 """Tests for ImageDataStore: allocation, retrieval, CoW, release."""
+
 import numpy as np
 import pytest
 

@@ -1,8 +1,8 @@
 """Additional coverage tests for color, edge, and compositor modules."""
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.processing.contracts import ProcessingRequest
@@ -14,6 +14,7 @@ def _req(op: str, **params: object) -> ProcessingRequest:
 
 # ─────────────── Color processors ───────────────
 
+
 class TestHueSaturation:
     def test_identity_saturation(self) -> None:
         from dip_studio.processing.processors.color import HueSaturationProcessor
@@ -23,7 +24,8 @@ class TestHueSaturation:
         buf = store.allocate(arr)
         out = store.get(
             HueSaturationProcessor(store).process(
-                buf, _req("hue_saturation", hue_shift=0.0, lightness_offset=0.0, saturation_scale=1.0)
+                buf,
+                _req("hue_saturation", hue_shift=0.0, lightness_offset=0.0, saturation_scale=1.0),
             )
         )
         assert out.shape == (1, 1, 3)
@@ -37,7 +39,8 @@ class TestHueSaturation:
         buf = store.allocate(arr)
         out = store.get(
             HueSaturationProcessor(store).process(
-                buf, _req("hue_saturation", hue_shift=0.0, lightness_offset=0.0, saturation_scale=0.0)
+                buf,
+                _req("hue_saturation", hue_shift=0.0, lightness_offset=0.0, saturation_scale=0.0),
             )
         )
         # All three channels should be equal (gray)
@@ -67,6 +70,7 @@ class TestHueSaturation:
 
 # ─────────────── Edge processors (NumPy fallback path) ───────────────
 
+
 class TestLaplacianProcessor:
     def test_laplacian_uniform_image_near_zero(self) -> None:
         from dip_studio.processing.processors.edge import LaplacianProcessor
@@ -92,13 +96,15 @@ class TestLaplacianProcessor:
 
 # ─────────────── Compositor ───────────────
 
+
 class TestCompositorFull:
     def test_render_document_with_no_layers_returns_blank(self) -> None:
         from unittest.mock import MagicMock
-        from dip_studio.domain.model import ImageDocument, ImageSpec, DocumentId
+        from uuid import uuid4
+
+        from dip_studio.domain.model import DocumentId, ImageDocument, ImageSpec
         from dip_studio.rendering.compositor import NumpyDocumentRenderer
         from dip_studio.rendering.ports import RenderRequest
-        from uuid import uuid4
 
         controller = MagicMock()
         doc = ImageDocument(
@@ -116,11 +122,12 @@ class TestCompositorFull:
 
     def test_render_document_with_layer_and_buffer(self) -> None:
         from unittest.mock import MagicMock
-        from dip_studio.domain.model import ImageDocument, ImageSpec, Layer, LayerId, DocumentId
+        from uuid import uuid4
+
+        from dip_studio.domain.model import DocumentId, ImageDocument, ImageSpec, Layer, LayerId
         from dip_studio.infrastructure.data_store import ImageDataStore
         from dip_studio.rendering.compositor import NumpyDocumentRenderer
         from dip_studio.rendering.ports import RenderRequest
-        from uuid import uuid4
 
         store = ImageDataStore()
         arr = np.full((4, 4, 3), 200, dtype=np.uint8)

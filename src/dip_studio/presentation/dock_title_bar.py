@@ -86,9 +86,7 @@ class DockPanel(QWidget):
         dock.topLevelChanged.connect(self._update_floating_controls)
         self._drop_indicator = QFrame(main_window)
         self._drop_indicator.setObjectName("dockDropIndicator")
-        self._drop_indicator.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
+        self._drop_indicator.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._drop_indicator.hide()
         self._drop_preview_visible = False
         self._update_floating_controls(dock.isFloating())
@@ -100,9 +98,7 @@ class DockPanel(QWidget):
         self._collapsed = not self._collapsed
         self._content.setVisible(not self._collapsed)
         self._collapse_button.setText("«" if self._collapsed else "»")
-        self._collapse_button.setToolTip(
-            "Expand panel" if self._collapsed else "Collapse panel"
-        )
+        self._collapse_button.setToolTip("Expand panel" if self._collapsed else "Collapse panel")
 
     def eventFilter(self, watched: object, event: object) -> bool:
         if watched not in (self._header, self._grip) or not isinstance(event, QMouseEvent):
@@ -110,9 +106,7 @@ class DockPanel(QWidget):
         if event.type() == QEvent.Type.MouseButtonPress:
             if event.button() == Qt.MouseButton.LeftButton:
                 self._drag_start = event.globalPosition().toPoint()
-                self._drag_offset = (
-                    self._drag_start - self._dock.mapToGlobal(QPoint(0, 0))
-                )
+                self._drag_offset = self._drag_start - self._dock.mapToGlobal(QPoint(0, 0))
                 self._dragging = False
             return True
         if event.type() == QEvent.Type.MouseMove and self._drag_start is not None:
@@ -126,9 +120,7 @@ class DockPanel(QWidget):
                     return True
         if event.type() == QEvent.Type.MouseButtonRelease:
             if self._dragging and self._dock.isFloating():
-                self._redock_if_dropped_on_workspace(
-                    event.globalPosition().toPoint()
-                )
+                self._redock_if_dropped_on_workspace(event.globalPosition().toPoint())
             self._drop_indicator.hide()
             self._drag_start = None
             self._dragging = False

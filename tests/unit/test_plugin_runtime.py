@@ -1,16 +1,15 @@
 from pathlib import Path
 
 from dip_studio.application.tool_registry import InMemoryToolRegistry
-from dip_studio.infrastructure.data_store import ImageDataStore
 from dip_studio.infrastructure.plugin_runtime import discover_and_activate_plugins
 from dip_studio.processing.engine import ProcessingEngine
-from dip_studio.processing.plugins import API_VERSION, PluginRegistry
+from dip_studio.processing.plugins import PluginRegistry
 
 
 def test_runtime_discovers_and_activates_plugin(tmp_path: Path) -> None:
     plugin = tmp_path / "runtime_plugin.py"
     plugin.write_text(
-        f"""
+        """
 from dip_studio.processing.plugins import API_VERSION
 class Processor:
     operation = "runtime_test"
@@ -28,9 +27,7 @@ PLUGIN = Plugin()
     registry = PluginRegistry()
     tools = InMemoryToolRegistry()
 
-    activated = discover_and_activate_plugins(
-        registry, engine, tools, (tmp_path,)
-    )
+    activated = discover_and_activate_plugins(registry, engine, tools, (tmp_path,))
 
     assert activated == ("runtime_plugin",)
     assert "runtime_test" in engine.operations

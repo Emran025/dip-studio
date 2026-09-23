@@ -53,7 +53,5 @@ def create_profile_registry(profile_name: str) -> ShortcutRegistry:
     registry = ShortcutRegistry(default_shortcut_bindings())
     rejected = registry.apply_overrides(profile_overrides(profile_name))
     if rejected:
-        raise ValueError(
-            f"Invalid built-in shortcut profile {profile_name}: {', '.join(rejected)}"
-        )
+        raise ValueError(f"Invalid built-in shortcut profile {profile_name}: {', '.join(rejected)}")
     return registry

@@ -12,8 +12,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QByteArray
 from PySide6.QtWidgets import QApplication
 
-from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.presentation import main_window as main_window_module
+from dip_studio.presentation.canvas_view import CanvasView
 from dip_studio.presentation.main_window import MainWindow
 
 

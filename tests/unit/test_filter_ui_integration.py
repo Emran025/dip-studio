@@ -1,4 +1,5 @@
 """End-to-end checks for applying parameterized filters through the Qt UI path."""
+
 from __future__ import annotations
 
 import os
@@ -20,16 +21,13 @@ from dip_studio.presentation.main_window import MainWindow
 from dip_studio.processing.registry import build_processing_engine
 from dip_studio.rendering.compositor import NumpyDocumentRenderer
 
-
 PARAMETERIZED_FILTERS = tuple(
     definition.id
     for definition in processing_tool_definitions()
     if definition.parameters and definition.id != "template_match"
 )
 QUICK_FILTERS = tuple(
-    definition.id
-    for definition in processing_tool_definitions()
-    if not definition.parameters
+    definition.id for definition in processing_tool_definitions() if not definition.parameters
 )
 
 

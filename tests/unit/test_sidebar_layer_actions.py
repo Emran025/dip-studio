@@ -12,12 +12,10 @@ from dip_studio.presentation.sidebar import RightSidebar
 
 
 def test_layer_sidebar_exposes_delete_button_and_delete_key() -> None:
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     sidebar = RightSidebar()
     requested: list[str] = []
-    sidebar.set_layer_structure_callback(
-        lambda action, _selected: requested.append(action)
-    )
+    sidebar.set_layer_structure_callback(lambda action, _selected: requested.append(action))
 
     delete_button = sidebar.findChild(type(sidebar.layer_lock_button), "removeLayerButton")
     assert delete_button is not None

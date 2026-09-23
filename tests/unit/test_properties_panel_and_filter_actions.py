@@ -65,7 +65,7 @@ def test_processing_action_signal_does_not_raise_keyerror_false(main_window: Mai
 
 
 def test_layer_selection_updates_properties_panel_schema(main_window: MainWindow):
-    """Selecting a layer in move/select mode populates the Properties panel with element controls."""
+    """Selecting a layer in move/select mode populates the Properties panel with element controls."""  # noqa: E501
     controller = main_window._controller
     doc = controller.create_document("TestDoc", 400, 300)
     layer = controller.add_layer("Layer 1").layers[0]
@@ -83,7 +83,7 @@ def test_layer_selection_updates_properties_panel_schema(main_window: MainWindow
 
 
 def test_editing_layer_properties_in_sidebar_updates_layer(main_window: MainWindow):
-    """Editing Layer properties via sidebar Properties panel updates layer opacity, blend mode, and name."""
+    """Editing Layer properties via sidebar Properties panel updates layer opacity, blend mode, and name."""  # noqa: E501
     controller = main_window._controller
     doc = controller.create_document("TestDoc", 400, 300)
     layer = controller.add_layer("Layer 1").layers[0]
@@ -92,15 +92,17 @@ def test_editing_layer_properties_in_sidebar_updates_layer(main_window: MainWind
     main_window._on_layer_selection_changed(layer.id)
 
     # Simulate changing opacity in properties panel
-    main_window._on_properties_value_changed({
-        "layer_name": "Renamed Layer",
-        "opacity": 0.5,
-        "blend_mode": "Multiply",
-        "visible": True,
-        "locked": False,
-        "pos_x": 10,
-        "pos_y": 20,
-    })
+    main_window._on_properties_value_changed(
+        {
+            "layer_name": "Renamed Layer",
+            "opacity": 0.5,
+            "blend_mode": "Multiply",
+            "visible": True,
+            "locked": False,
+            "pos_x": 10,
+            "pos_y": 20,
+        }
+    )
 
     updated_doc = controller.document
     updated_layer = updated_doc.layers[0]

@@ -1,4 +1,5 @@
 """Tests for toolbar and interactive tool processors: Transform, Analysis, and Bridge processors."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -112,9 +113,7 @@ class TestToolBridgeProcessors:
         store = ImageDataStore()
         arr = np.full((12, 12, 3), 100, dtype=np.uint8)
         buf = store.allocate(arr)
-        out_buf = BlurToolProcessor(store).process(
-            buf, _req("blur", radius=2.0, method="Gaussian")
-        )
+        out_buf = BlurToolProcessor(store).process(buf, _req("blur", radius=2.0, method="Gaussian"))
         out = store.get(out_buf)
         assert out.shape == arr.shape
 
