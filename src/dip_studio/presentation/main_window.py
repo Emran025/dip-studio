@@ -1027,11 +1027,19 @@ class MainWindow(QMainWindow):
             if hasattr(layer, "vertices"):
                 x, y, width, height = (int(round(value)) for value in layer.vertices[:4])
                 transform = getattr(layer, "transform", None)
+                scale_x = abs(float(transform.sx)) if transform else 1.0
+                scale_y = abs(float(transform.sy)) if transform else 1.0
+                transformed_x = x * (transform.sx if transform else 1.0) + (
+                    transform.tx if transform else 0
+                )
+                transformed_y = y * (transform.sy if transform else 1.0) + (
+                    transform.ty if transform else 0
+                )
                 return (
-                    x + int(transform.tx if transform else 0),
-                    y + int(transform.ty if transform else 0),
-                    max(1, width * int(transform.sx if transform else 1)),
-                    max(1, height * int(transform.sy if transform else 1)),
+                    int(round(transformed_x)),
+                    int(round(transformed_y)),
+                    max(1, int(round(width * scale_x))),
+                    max(1, int(round(height * scale_y))),
                 )
             return full
         try:
@@ -1042,13 +1050,13 @@ class MainWindow(QMainWindow):
             if source_width <= 0 or source_height <= 0:
                 return full
             t = getattr(layer, "transform", None)
-            tx = int(t.tx) if t else 0
-            ty = int(t.ty) if t else 0
+            tx = int(round(t.tx)) if t else 0
+            ty = int(round(t.ty)) if t else 0
             return (
                 tx,
                 ty,
-                max(1, source_width),
-                max(1, source_height),
+                max(1, int(round(source_width * (abs(float(t.sx)) if t else 1.0)))),
+                max(1, int(round(source_height * (abs(float(t.sy)) if t else 1.0)))),
             )
         except (KeyError, ValueError):
             return full
@@ -1170,6 +1178,7 @@ class MainWindow(QMainWindow):
 
         if event_type == "press" and event.button() == Qt.MouseButton.LeftButton:
             self._resize_handle = None
+            self._resize_start_rect = None
             hit_layer = self._controller.hit_test_layer(ix, iy)
             if hit_layer is not None:
                 self._sidebar.select_layer(
@@ -1178,8 +1187,13 @@ class MainWindow(QMainWindow):
                 )
                 self._on_layer_selection_changed(self._selected_layer_ids())
                 handle = self._canvas.active_layer_handle_at(pos)
-                if handle is not None and getattr(hit_layer, "shape_type", None):
+                if handle is not None and (
+                    getattr(hit_layer, "shape_type", None) or hit_layer.buffer_id is not None
+                ):
                     self._resize_handle = handle
+                    self._resize_start_rect = QRect(
+                        *self._selected_layer_content_rect(doc, hit_layer.id)
+                    )
             self._move_drag_start = (ix, iy)
             self._canvas.setCursor(
                 Qt.CursorShape.ClosedHandCursor if hit_layer else Qt.CursorShape.SizeAllCursor
@@ -1195,22 +1209,58 @@ class MainWindow(QMainWindow):
                     target_id = selected[0]
                     layer = next((layer for layer in doc.layers if layer.id == target_id), None)
                     if layer is not None and not layer.locked:
-                        if self._resize_handle is not None and getattr(layer, "shape_type", None):
-                            left, top, width, height = self._selected_layer_content_rect(
-                                doc, target_id
+                        if self._resize_handle is not None:
+                            start_rect = self._resize_start_rect or QRect(
+                                *self._selected_layer_content_rect(doc, target_id)
                             )
-                            right, bottom = left + width, top + height
-                            if "left" in self._resize_handle:
-                                left = min(ix, right - 1)
-                            if "right" in self._resize_handle:
-                                right = max(ix, left + 1)
-                            if "top" in self._resize_handle:
-                                top = min(iy, bottom - 1)
-                            if "bottom" in self._resize_handle:
-                                bottom = max(iy, top + 1)
-                            doc = self._controller.resize_shape_layer(
-                                target_id, (left, top, right - left, bottom - top)
+                            bounds = QRect(0, 0, doc.image.width - 1, doc.image.height - 1)
+                            corner_names = {
+                                "top_left": "tl",
+                                "top_right": "tr",
+                                "bottom_left": "bl",
+                                "bottom_right": "br",
+                            }
+                            if self._resize_handle in corner_names:
+                                resized = CanvasView._resize_rect_from_corner(
+                                    start_rect,
+                                    corner_names[self._resize_handle],
+                                    QPoint(ix, iy),
+                                    bounds,
+                                    shift=bool(
+                                        event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+                                    ),
+                                    alt=bool(
+                                        event.modifiers() & Qt.KeyboardModifier.AltModifier
+                                    ),
+                                )
+                            else:
+                                resized = QRect(start_rect)
+                                if "left" in self._resize_handle:
+                                    resized.setLeft(
+                                        max(bounds.left(), min(resized.right() - 1, ix))
+                                    )
+                                if "right" in self._resize_handle:
+                                    resized.setRight(
+                                        min(bounds.right(), max(resized.left() + 1, ix))
+                                    )
+                                if "top" in self._resize_handle:
+                                    resized.setTop(
+                                        max(bounds.top(), min(resized.bottom() - 1, iy))
+                                    )
+                                if "bottom" in self._resize_handle:
+                                    resized.setBottom(
+                                        min(bounds.bottom(), max(resized.top() + 1, iy))
+                                    )
+                            rect = (
+                                resized.left(),
+                                resized.top(),
+                                resized.width(),
+                                resized.height(),
                             )
+                            if getattr(layer, "shape_type", None):
+                                doc = self._controller.resize_shape_layer(target_id, rect)
+                            else:
+                                doc = self._controller.resize_image_layer_to_rect(target_id, rect)
                         else:
                             doc = self._controller.translate_layer(target_id, dx, dy)
                         self._move_drag_start = (ix, iy)
@@ -1223,6 +1273,7 @@ class MainWindow(QMainWindow):
         elif event_type == "release" and event.button() == Qt.MouseButton.LeftButton:
             self._move_drag_start = None
             self._resize_handle = None
+            self._resize_start_rect = None
             self._canvas.setCursor(Qt.CursorShape.SizeAllCursor)
 
     def _tool_zoom_event(self, event_type: str, event: object) -> None:

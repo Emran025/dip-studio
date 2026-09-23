@@ -1,5 +1,6 @@
 """Unit tests for selection tools, shape drawing, and Shift/Alt geometric constraints."""
 
+import numpy as np
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
@@ -51,6 +52,41 @@ def test_canvas_compute_constrained_rect_shift_and_alt() -> None:
     # 4. Shift + Alt (1:1 square centered on origin)
     rect_both = CanvasView.compute_constrained_rect(origin, current, shift=True, alt=True)
     assert rect_both == QRect(0, 0, 200, 200)
+
+
+def test_corner_resize_stays_inside_bounds_and_preserves_aspect() -> None:
+    bounds = QRect(0, 0, 199, 149)
+    start = QRect(20, 20, 80, 40)
+
+    shifted = CanvasView._resize_rect_from_corner(
+        start, "br", QPoint(180, 140), bounds, shift=True
+    )
+    assert shifted.right() <= bounds.right()
+    assert shifted.bottom() <= bounds.bottom()
+    assert shifted.width() / shifted.height() == 2
+
+    centered = CanvasView._resize_rect_from_corner(
+        start, "br", QPoint(100, 80), bounds, shift=False, alt=True
+    )
+    assert centered.center() == start.center()
+
+
+def test_image_layer_resize_uses_non_destructive_transform() -> None:
+    store = ImageDataStore()
+    buffer_id = store.allocate(np.zeros((10, 20, 4), dtype=np.uint8))
+    controller = EditorController(BlankDocumentRenderer(), data_store=store)
+    document = controller.create_document("Resize", 100, 80)
+    layer_id = document.layers[0].id
+    controller._session.replace(
+        document.changed(layers=(document.layers[0].changed(buffer_id=buffer_id),))
+    )
+
+    resized = controller.resize_image_layer_to_rect(layer_id, (10, 20, 40, 30))
+    transform = resized.layers[0].transform
+    assert transform is not None
+    assert (transform.tx, transform.ty) == (10.0, 20.0)
+    assert (transform.sx, transform.sy) == (2.0, 3.0)
+    assert resized.layers[0].buffer_id == buffer_id
 
 
 def test_editor_selection_and_shape_tools() -> None:

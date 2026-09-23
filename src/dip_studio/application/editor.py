@@ -733,6 +733,37 @@ class EditorController:
         self._previews.pop(str(self._session.document.id), None)
         return self._session.document
 
+    def resize_image_layer_to_rect(
+        self, layer_id: LayerId, rect: tuple[int, int, int, int]
+    ) -> ImageDocument:
+        """Resize an image-backed layer non-destructively into a document rect."""
+        if self._data_store is None:
+            raise RuntimeError("Image data storage is not configured")
+        document = self._session.document
+        layer = next((item for item in document.layers if item.id == layer_id), None)
+        if layer is None or layer.buffer_id is None:
+            raise ValueError("Selected layer has no image content")
+        source = self._data_store.get(layer.buffer_id)
+        source_height, source_width = source.shape[:2]
+        x, y, width, height = rect
+        if width <= 0 or height <= 0:
+            raise ValueError("Layer dimensions must be positive")
+        current = layer.transform or Transform()
+        transform = Transform(
+            tx=float(x),
+            ty=float(y),
+            sx=float(width) / max(1, source_width),
+            sy=float(height) / max(1, source_height),
+            rotation=current.rotation,
+            skew_x=current.skew_x,
+            skew_y=current.skew_y,
+        )
+        self._history_for_active().execute(
+            ChangeLayer(layer_id, transform=transform), self._session
+        )
+        self._previews.pop(str(document.id), None)
+        return self._session.document
+
     def hit_test_layer(self, x: int, y: int) -> Layer | None:
         """Return the top-most visible layer containing pixel content at (x, y)."""
         doc = self.document
